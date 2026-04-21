@@ -2496,8 +2496,7 @@ bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, co
   const uint8_t *srcp = vsapi->getReadPtr(src, 0);
   const uint8_t *nxtp = vsapi->getReadPtr(nxt, 0);
   const int height = vsapi->getFrameHeight(src, 0) >> 1;
-  const int rowsize = vsapi->getFrameHeight(src, 0) * sizeof(pixel_t);
-  int width = rowsize / sizeof(pixel_t);
+  int width = vsapi->getFrameWidth(src, 0);
   // this mod16 must be the same as in computing "diffmaxsc"
   
   // safe mod16 rounding for SSE2 in mind
@@ -2505,8 +2504,8 @@ bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, co
 
   // every 2nd line
   int prv_pitch = vsapi->getStride(prv, 0) << 1;
-  int src_pitch = prv_pitch;
-  int nxt_pitch = prv_pitch;
+  int src_pitch = vsapi->getStride(src, 0) << 1;
+  int nxt_pitch = vsapi->getStride(nxt, 0) << 1;
   prvp += (1 - field)*(prv_pitch >> 1);
   srcp += (1 - field)*(src_pitch >> 1);
   nxtp += (1 - field)*(nxt_pitch >> 1);
