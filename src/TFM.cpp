@@ -634,7 +634,7 @@ void TFM::writeDisplay(VSFrameRef *dst, int n, int fmatch, int combed, bool over
     if (micout == 1 && mics[0] != -20 && mics[1] != -20 && mics[2] != -20 && micmatching == 0)
     {
       snprintf(buf, SZ, "MICS:  p = %d  c = %d  n = %d\n", mics[0], mics[1], mics[2]);
-      text + buf;
+      text += buf;
     }
     else if ((micout == 2 && mics[0] != -20 && mics[1] != -20 && mics[2] != -20 &&
       mics[3] != -20 && mics[4] != -20) || micmatching > 0)
@@ -2079,6 +2079,12 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
     throw TIVTCError("TFM:  height and width must be divisible by 2!");
   if (vi->height < 6 || vi->width < 64)
     throw TIVTCError("TFM:  frame dimensions too small!");
+  // The combing analyzer and the postprocessing deinterlacer read a couple of rows
+  // above/below each line and derive (planeHeight/2 - 3) / (planeHeight - 4) loop counts;
+  // for subsampled chroma the smallest plane is height >> subSamplingH, so a short frame
+  // would underflow those counts into out-of-bounds accesses. Require at least 8 lines per plane.
+  if ((vi->height >> vi->format->subSamplingH) < 8)
+    throw TIVTCError("TFM:  frame height too small (each plane needs at least 8 lines)!");
   if (mode < 0 || mode > 7)
     throw TIVTCError("TFM:  mode must be set to 0, 1, 2, 3, 4, 5, 6, or 7!");
   if (field < -1 || field > 1)

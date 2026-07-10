@@ -922,8 +922,12 @@ const VSFrameRef * TDecimate::GetFrameMode4(int n, int activationReason, VSFrame
 const VSFrameRef * TDecimate::GetFrameMode56(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
 {
   int frame = aLUT[n];
-  int durNum = frame_duration_info[frame].first;
-  int durDen = frame_duration_info[frame].second;
+  // frame_duration_info is fully populated at construction and only read here; use find()
+  // (a const lookup) rather than operator[] so concurrent mode-5/6 GetFrame calls under
+  // fmParallel don't race on a map insertion.
+  auto durIt = frame_duration_info.find(frame);
+  int durNum = durIt != frame_duration_info.end() ? durIt->second.first : 0;
+  int durDen = durIt != frame_duration_info.end() ? durIt->second.second : 0;
 
   if (activationReason == arInitial) {
       vsapi->requestFrameFilter(frame, clip2, frameCtx);
@@ -2675,10 +2679,10 @@ finishTP:
       switch (ddup)
       {
           case 1:
-          frameDen = static_cast<int>(fpsNum * (cycle - cycleR) / cycle);
+          frameDen = static_cast<int>((int64_t)fpsNum * (cycle - cycleR) / cycle);
           break;
           case 2:
-          frameDen = static_cast<int>(fpsNum * (cycle - cycleR - 1) / cycle);
+          frameDen = static_cast<int>((int64_t)fpsNum * (cycle - cycleR - 1) / cycle);
           break;
           default:
           frameDen = fpsNum;
@@ -2827,6 +2831,8 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
   
   bool tfmFullInfo = false, metricsFullInfo = false;
   
+  if (vi.fpsDen == 0 && (mode == 2 || mode == 3 || mode == 5 || mode == 7))
+    throw TIVTCError("TDecimate:  modes 2, 3, 5 and 7 require a clip with a known constant frame rate (fpsDen != 0)!");
   fps = (double)vi.fpsNum / (double)vi.fpsDen;
 
 
@@ -3572,10 +3578,12 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
   else if (mode == 7)
   {
     if (metricsOutArray.empty())
-    {
       metricsOutArray.resize(vi.numFrames * 2, UINT64_MAX);
-      metricsOutArray[0] = 0;
-    }
+    // Frame 0 has no predecessor so its metric is never computed; set the sentinel
+    // unconditionally. The output= path pre-allocates metricsOutArray, so guarding this
+    // on empty() would leave element 0 as UINT64_MAX and mode7_analysis would throw
+    // "uncalculated metrics" on the very first frame.
+    metricsOutArray[0] = 0;
     if (aLUT.size()) aLUT.resize(0);
     aLUT.resize(vi.numFrames, -20);
 

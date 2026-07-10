@@ -61,7 +61,6 @@ void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
     const uint8_t *srcp = vsapi->getReadPtr(src, plane);
     int src_pitch = vsapi->getStride(src, plane);
     int width = vsapi->getFrameWidth(src, plane);
-    int widtha = (width >> 3) << 3; // mod 8
     int height = vsapi->getFrameHeight(src, plane);
     uint8_t *dstp = vsapi->getWritePtr(dst, plane);
     int dst_pitch = vsapi->getStride(dst, plane);
@@ -124,7 +123,6 @@ void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
     const uint8_t* srcp = vsapi->getReadPtr(src, plane);
     int src_pitch = vsapi->getStride(src, plane);
     int width = vsapi->getFrameWidth(src, plane);
-    int widtha = (width >> 4) << 4; // mod 16
     int height = vsapi->getFrameHeight(src, plane);
     uint8_t* dstp = vsapi->getWritePtr(dst, plane);
     int dst_pitch = vsapi->getStride(dst, plane);

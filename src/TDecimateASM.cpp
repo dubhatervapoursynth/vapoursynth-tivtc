@@ -193,7 +193,7 @@ void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
   typedef typename std::conditional<sizeof(pixel_t) == 1 && !SAD, int, int64_t> ::type safeint_t;
 
   safeint_t difft; // int or 64 bits
-  int diffs; // pixel differences are internally scaled back to 8 bit range to avoid overflow
+  int64_t diffs; // per-block SSD sum can exceed 32 bits for large blocks (e.g. ssd=1, 512x512); use 64-bit
   int box1, box2;
   int yshift, yhalf, xshift, xhalf;
   int heighta, widtha;

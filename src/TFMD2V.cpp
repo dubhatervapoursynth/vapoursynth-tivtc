@@ -145,7 +145,8 @@ int TFM::fillTrimArray(int frames)
     if (f == nullptr) return 2;
     while (fgets(linein, 80, f.get()) != nullptr)
     {
-      sscanf(linein, "%d,%d", &x, &y);
+      if (sscanf(linein, "%d,%d", &x, &y) != 2)
+        continue;
       if (x < 0 && abs(x) <= frames)
         x = frames + x;
       if (y < 0 && abs(y) <= frames)
@@ -337,16 +338,16 @@ pass2_start:
   do
   {
     p = line;
-    while (*p++ != ' ');
-    while (*p++ != ' ');
-    if (D2Vformat > 9) while (*p++ != ' ');
-    while (*p++ != ' ');
+    while (*p && *p++ != ' ');
+    while (*p && *p++ != ' ');
+    if (D2Vformat > 9) while (*p && *p++ != ' ');
+    while (*p && *p++ != ' ');
     if (D2Vformat > 0)
     {
-      while (*p++ != ' ');
-      while (*p++ != ' ');
+      while (*p && *p++ != ' ');
+      while (*p && *p++ != ' ');
       if (D2Vformat > 18)
-        while (*p++ != ' ');
+        while (*p && *p++ != ' ');
     }
     while (*p > 47 && *p < 123)
     {
@@ -362,7 +363,7 @@ pass2_start:
         }
         else array[num2++] = (val&~0x10);
       }
-      while (*p != ' ' && *p != '\n') p++;
+      while (*p && *p != ' ' && *p != '\n') p++;
       p++;
     }
   } while ((fgets(line, 1024, ind2v.get()) != nullptr) && line[0] > 47 && line[0] < 123);
@@ -420,16 +421,16 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
   do
   {
     p = line;
-    while (*p++ != ' ');
-    while (*p++ != ' ');
-    if (D2Vformat > 9) while (*p++ != ' ');
-    while (*p++ != ' ');
+    while (*p && *p++ != ' ');
+    while (*p && *p++ != ' ');
+    if (D2Vformat > 9) while (*p && *p++ != ' ');
+    while (*p && *p++ != ' ');
     if (D2Vformat > 0)
     {
-      while (*p++ != ' ');
-      while (*p++ != ' ');
+      while (*p && *p++ != ' ');
+      while (*p && *p++ != ' ');
       if (D2Vformat > 18)
-        while (*p++ != ' ');
+        while (*p && *p++ != ' ');
     }
     while (*p > 47 && *p < 123)
     {
@@ -450,7 +451,7 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
         *p = tbuf[0]; ++p;
         *p = tbuf[1];
       }
-      while (*p != ' ' && *p != '\n') p++;
+      while (*p && *p != ' ' && *p != '\n') p++;
       p++;
     }
     fputs(line, outd2v.get());
@@ -466,7 +467,7 @@ int TFM::D2V_get_output_filename(char wfile[]) const
   strcpy(wfile, d2v.c_str());
   char *p = wfile;
   while (*p != 0) p++;
-  while (*p != 46) p--;
+  while (p > wfile && *p != 46) p--;
   *p++ = '-'; *p++ = 'F'; *p++ = 'I'; *p++ = 'X'; *p++ = 'E'; *p++ = 'D';
   *p++ = '.'; *p++ = 'd'; *p++ = '2'; *p++ = 'v'; *p = 0;
   bool checking = true;
@@ -480,7 +481,7 @@ int TFM::D2V_get_output_filename(char wfile[]) const
       outd2v = nullptr;
       p = wfile;
       while (*p != 0) p++;
-      while (*p != 46) p--;
+      while (p > wfile && *p != 46) p--;
       if (inT == 1)
       {
         *p++ = '_'; *p++ = inT + '0'; *p++ = '.'; *p++ = 'd';

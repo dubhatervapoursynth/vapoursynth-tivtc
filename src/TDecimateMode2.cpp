@@ -44,6 +44,10 @@ const VSFrameRef * TDecimate::GetFrameMode2(int n, int activationReason, void **
         break;
       }
     }
+    // Rounding between the output frame count and the per-cycle drop totals can leave the
+    // last output frame(s) uncovered by any cycle, leaving cycleF at its -20 sentinel; clamp
+    // to the final cycle instead of indexing aLUT with a large negative value.
+    if (cycleF == -20) cycleF = mode2_numCycles - 1;
 
     if (activationReason == arInitial) {
         if (cycleF > 0) {
