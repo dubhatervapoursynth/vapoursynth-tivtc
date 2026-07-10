@@ -24,7 +24,6 @@
 */
 
 #include <stdio.h>
-#include <xmmintrin.h>
 #ifndef _WIN32
 #include <limits.h>
 #include <stdlib.h>
@@ -42,14 +41,13 @@
 #include <VSHelper.h>
 #include "calcCRC.h"
 #include "internal.h"
-#include "cpufeatures.h"
 
 
 template<int planarType>
 void FillCombedPlanarUpdateCmaskByUV(VSFrameRef* cmask, const VSAPI *vsapi);
 
 template<typename pixel_t>
-void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, int cpuFlags, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
+void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
 
 struct MTRACK {
   int frame, match;
@@ -68,7 +66,6 @@ private:
     const VSAPI *vsapi;
     VSNodeRef *child;
 
-  CPUFeatures cpuFlags;
 
   int order, field, mode; // modified in GetFrame
   int PP; // modified in GetFrame

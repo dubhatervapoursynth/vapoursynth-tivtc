@@ -25,7 +25,6 @@
 
 #include <cstring>
 #include "TFM.h"
-#include "TFMasm.h"
 #include "TCommonASM.h"
 #include <algorithm>
 
@@ -52,12 +51,10 @@ template void FillCombedPlanarUpdateCmaskByUV<444>(VSFrameRef* cmask, const VSAP
 //FIXME: once to make it common with TDeInterlace::CheckedCombedPlanar
 //similar, but cmask is real PVideoFrame there
 template<typename pixel_t>
-void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi)
+void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi)
 {
   const int bits_per_pixel = vi->format->bitsPerSample;
 
-  const bool use_sse2 = cpuFlags->sse2;
-  const bool use_sse4 = cpuFlags->sse4_1;
   // cthresh: Area combing threshold used for combed frame detection.
   // This essentially controls how "strong" or "visible" combing must be to be detected.
   // Good values are from 6 to 12. If you know your source has a lot of combed frames set 
@@ -132,12 +129,7 @@ void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chro
       cmkp += cmk_pitch;
       // middle Height - 4
       const int lines_to_process = Height - 4;
-      if (use_sse2 && sizeof(pixel_t) == 1)
-        check_combing_SSE2((const uint8_t*)srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, scaled_cthresh);
-      else if (use_sse4 && sizeof(pixel_t) == 2)
-        check_combing_uint16_SSE4((const uint16_t*)srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, scaled_cthresh);
-      else
-        check_combing_c<pixel_t>(srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, scaled_cthresh);
+      check_combing_c<pixel_t>(srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, scaled_cthresh);
       srcppp += src_pitch * lines_to_process;
       srcpp += src_pitch * lines_to_process;
       srcp += src_pitch * lines_to_process;
@@ -189,19 +181,7 @@ void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chro
       cmkp += cmk_pitch;
       // middle Height - 2
       const int lines_to_process = Height - 2;
-      if (use_sse2)
-      {
-        if constexpr (sizeof(pixel_t) == 1)
-          check_combing_SSE2_Metric1(srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, cthreshsq);
-        else
-          check_combing_c_Metric1<pixel_t, safeint_t>(srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, cthreshsq);
-        // fixme: write SIMD? later. int64 inside.
-        // check_combing_uint16_SSE2_Metric1(srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, cthreshsq);
-      }
-      else
-      {
-        check_combing_c_Metric1<pixel_t, safeint_t>(srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, cthreshsq);
-      }
+      check_combing_c_Metric1<pixel_t, safeint_t>(srcp, cmkp, Width, lines_to_process, src_pitch, cmk_pitch, cthreshsq);
       srcpp += src_pitch * lines_to_process;
       srcp += src_pitch * lines_to_process;
       srcpn += src_pitch * lines_to_process;
@@ -228,8 +208,8 @@ void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chro
 }
 
 // instantiate
-template void checkCombedPlanarAnalyze_core<uint8_t>(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
-template void checkCombedPlanarAnalyze_core<uint16_t>(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
+template void checkCombedPlanarAnalyze_core<uint8_t>(const VSVideoInfo *vi, int cthresh, bool chroma, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
+template void checkCombedPlanarAnalyze_core<uint16_t>(const VSVideoInfo *vi, int cthresh, bool chroma, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
 
 
 bool TFM::checkCombedPlanar(const VSFrameRef *src, int n, int match,
@@ -258,11 +238,11 @@ bool TFM::checkCombedPlanar(const VSFrameRef *src, int n, int match,
 
   const int bits_per_pixel = vi->format->bitsPerSample;
   if (vi->format->bytesPerSample == 1) {
-    checkCombedPlanarAnalyze_core<uint8_t>(vi, cthresh, _chroma, &cpuFlags, metric, src, cmask.get(), vsapi);
+    checkCombedPlanarAnalyze_core<uint8_t>(vi, cthresh, _chroma, metric, src, cmask.get(), vsapi);
     return checkCombedPlanar_core<uint8_t>(src, n, match, blockN, xblocksi, mics, ddebug, bits_per_pixel);
   }
   else {
-    checkCombedPlanarAnalyze_core<uint16_t>(vi, cthresh, _chroma, &cpuFlags, metric, src, cmask.get(), vsapi);
+    checkCombedPlanarAnalyze_core<uint16_t>(vi, cthresh, _chroma, metric, src, cmask.get(), vsapi);
     return checkCombedPlanar_core<uint16_t>(src, n, match, blockN, xblocksi, mics, ddebug, bits_per_pixel);
   }
 }
@@ -276,7 +256,6 @@ bool TFM::checkCombedPlanar_core(const VSFrameRef *src, int n, int match,
     (void)ddebug;
     (void)bits_per_pixel;
 
-  const bool use_sse2 = cpuFlags.sse2;
 
   const int cmk_pitch = vsapi->getStride(cmask.get(), 0);
   const uint8_t *cmkp = vsapi->getWritePtr(cmask.get(), 0) + cmk_pitch;
@@ -294,7 +273,6 @@ bool TFM::checkCombedPlanar_core(const VSFrameRef *src, int n, int match,
   int Heighta = (Height >> (yshift - 1)) << (yshift - 1);
   if (Heighta == Height) Heighta = Height - yhalf;
   const int Widtha = (Width >> (xshift - 1)) << (xshift - 1);
-  const bool use_sse2_sum = (use_sse2 && xhalf == 8 && yhalf == 8) ? true : false; // 8x8: no alignment
   for (int y = 1; y < yhalf; ++y)
   {
     const int temp1 = (y >> yshift)*xblocks4;
@@ -319,24 +297,6 @@ bool TFM::checkCombedPlanar_core(const VSFrameRef *src, int n, int match,
   {
     const int temp1 = (y >> yshift)*xblocks4;
     const int temp2 = ((y + yhalf) >> yshift)*xblocks4;
-    if (use_sse2_sum)
-    {
-      for (int x = 0; x < Widtha; x += xhalf)
-      {
-        int sum = 0;
-        compute_sum_8xN_sse2<8>(cmkpp + x, cmk_pitch, sum);
-        if (sum)
-        {
-          const int box1 = (x >> xshift) << 2;
-          const int box2 = ((x + xhalf) >> xshift) << 2;
-          cArray.get()[temp1 + box1 + 0] += sum;
-          cArray.get()[temp1 + box2 + 1] += sum;
-          cArray.get()[temp2 + box1 + 2] += sum;
-          cArray.get()[temp2 + box2 + 3] += sum;
-        }
-      }
-    }
-    else
     {
       for (int x = 0; x < Widtha; x += xhalf)
       {

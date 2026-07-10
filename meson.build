@@ -22,12 +22,6 @@ ldflags = [
 
 host_cpu_family = host_machine.cpu_family()
 
-if host_cpu_family.startswith('x86')
-  cflags += ['-mfpmath=sse', '-msse2', '-DVS_TARGET_CPU_X86=1']
-else
-  error('TIVTC can be built only for x86 systems at this time.')
-endif
-
 
 host_system = host_machine.system()
 
@@ -58,7 +52,6 @@ endif
 
 sources = [
   'src/calcCRC.cpp',
-  'src/cpufeatures.cpp',
   'src/Cycle.cpp',
   'src/PluginInit.cpp',
   'src/TCommonASM.cpp',
@@ -69,7 +62,6 @@ sources = [
   'src/TDecimateMode7.cpp',
   'src/TDecimateOut.cpp',
   'src/TFM.cpp',
-  'src/TFMASM.cpp',
   'src/TFMD2V.cpp',
   'src/TFMPlanar.cpp',
   'src/TFMPP.cpp',

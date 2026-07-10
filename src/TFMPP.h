@@ -27,7 +27,6 @@
 #include <vector>
 #include <math.h>
 #include <VapourSynth.h>
-#include "cpufeatures.h"
 #ifdef VERSION
 #undef VERSION
 #endif
@@ -38,30 +37,8 @@ void maskClip2_C(const uint8_t* srcp, const uint8_t* dntp,
   const uint8_t* maskp, uint8_t* dstp, int src_pitch, int dnt_pitch,
   int msk_pitch, int dst_pitch, int width, int height);
 
-void maskClip2_SSE2(const uint8_t* srcp, const uint8_t* dntp,
-  const uint8_t* maskp, uint8_t* dstp, int src_pitch, int dnt_pitch,
-  int msk_pitch, int dst_pitch, int width, int height);
-
-template<typename pixel_t>
-#if defined(GCC) || defined(CLANG)
-__attribute__((__target__("sse4.1")))
-#endif 
-void maskClip2_SSE4(const uint8_t* srcp, const uint8_t* dntp,
-  const uint8_t* maskp, uint8_t* dstp, int src_pitch, int dnt_pitch,
-  int msk_pitch, int dst_pitch, int width, int height);
-
-template<bool with_mask>
-void blendDeintMask_SSE2(const uint8_t* srcp, uint8_t* dstp,
-  const uint8_t* maskp, int src_pitch, int dst_pitch, int msk_pitch,
-  int width, int height);
-
 template<typename pixel_t, bool with_mask>
 void blendDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
-  const uint8_t* maskp, int src_pitch, int dst_pitch, int msk_pitch,
-  int width, int height);
-
-template<bool with_mask>
-void cubicDeintMask_SSE2(const uint8_t* srcp, uint8_t* dstp,
   const uint8_t* maskp, int src_pitch, int dst_pitch, int msk_pitch,
   int width, int height);
 
@@ -76,7 +53,6 @@ private:
     const VSAPI *vsapi;
     VSNodeRef *child;
 
-  CPUFeatures cpuFlags;
 
   int PP, mthresh;
   std::string ovr;
@@ -139,11 +115,6 @@ private:
 //  void elaDeintYUY2(VSFrameRef *dst, const VSFrameRef *mask, const VSFrameRef *src, bool nomask, int field);
 
   void copyField(VSFrameRef *dst, const VSFrameRef *src, int field) const;
-  void buildMotionMask1_SSE2(const uint8_t *srcp1, const uint8_t *srcp2,
-    uint8_t *dstp, int s1_pitch, int s2_pitch, int dst_pitch, int width, int height, const CPUFeatures *cpu) const;
-  void buildMotionMask2_SSE2(const uint8_t *srcp1, const uint8_t *srcp2,
-    const uint8_t *srcp3, uint8_t *dstp, int s1_pitch, int s2_pitch,
-    int s3_pitch, int dst_pitch, int width, int height, const CPUFeatures *cpu) const;
 
   void writeDisplay(VSFrameRef *dst, int n, int field) const;
 

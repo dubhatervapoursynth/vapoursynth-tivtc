@@ -27,8 +27,6 @@
 #include "TFM.h"
 #include "TFMPP.h"
 #include "TCommonASM.h"
-#include "emmintrin.h"
-#include "smmintrin.h"
 
 
 const VSFrameRef *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
@@ -184,7 +182,6 @@ template<typename pixel_t>
 void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt,
   VSFrameRef* mask, int use) const
 {
-  bool use_sse2 = cpuFlags.sse2;
 
   const int np = vi->format->numPlanes;
   for (int b = 0; b < np; ++b)
@@ -218,10 +215,6 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
 
     if (use == 1)
     {
-      // fixme: hbd SIMD
-      if (sizeof(pixel_t) == 1 && use_sse2)
-        buildMotionMask1_SSE2((const uint8_t *)srcp, (const uint8_t*)prvp, maskw, src_pitch, prv_pitch, msk_pitch, width, height - 2, &cpuFlags);
-      else
       {
         memset(maskw - msk_pitch, 0xFF, msk_pitch*height);
         for (int y = 1; y < height - 1; ++y)
@@ -243,10 +236,6 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
     }
     else if (use == 2)
     {
-      // fixme: hbd SIMD
-      if (sizeof(pixel_t) == 1 && use_sse2)
-        buildMotionMask1_SSE2((const uint8_t*)srcp, (const uint8_t*)nxtp, maskw, src_pitch, nxt_pitch, msk_pitch, width, height - 2, &cpuFlags);
-      else
       {
         memset(maskw - msk_pitch, 0xFF, msk_pitch*height);
         for (int y = 1; y < height - 1; ++y)
@@ -270,25 +259,6 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
     {
       // fixme: hbd SIMD
       // use not 1 or 2
-      if (sizeof(pixel_t) == 1 && use_sse2)
-      {
-        buildMotionMask2_SSE2((const uint8_t*)prvp, (const uint8_t*)srcp, (const uint8_t*)nxtp, maskw, prv_pitch, src_pitch, nxt_pitch, msk_pitch, width, height - 2, &cpuFlags);
-        for (int y = 1; y < height; ++y)
-        {
-          for (int x = 0; x < width; ++x)
-          {
-            if (!maskw[x]) continue;
-            if (((maskw[x] & 0x8) && (maskw[x] & 0x15)) ||
-              ((maskw[x] & 0x4) && (maskw[x] & 0x2A)) ||
-              ((maskw[x] & 0x22) && ((maskw[x] & 0x11) == 0x11)) ||
-              ((maskw[x] & 0x11) && ((maskw[x] & 0x22) == 0x22)))
-              maskw[x] = 0xFF;
-            else maskw[x] = 0;
-          }
-          maskw += msk_pitch;
-        }
-      }
-      else
       {
         memset(maskw - msk_pitch, 0xFF, msk_pitch*height);
         for (int y = 1; y < height - 1; ++y)
@@ -331,110 +301,8 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
       linkPlanar<411>(mask);
 }
 
-void TFMPP::buildMotionMask1_SSE2(const uint8_t *srcp1, const uint8_t *srcp2,
-  uint8_t *dstp, int s1_pitch, int s2_pitch, int dst_pitch, int width,
-  int height, const CPUFeatures *cpu) const
-{
-    (void)cpu;
-
-  memset(dstp - dst_pitch, 0xFF, dst_pitch);
-  memset(dstp + dst_pitch*height, 0xFF, dst_pitch);
-  __m128i thresh = _mm_set1_epi8((char)(std::max(std::min(255 - mthresh - 1, 255), 0)));
-  __m128i full_ff = _mm_set1_epi8(-1);
-  while (height--) {
-    for (int x = 0; x < width; x += 16) {
-      auto next1 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp1 + s1_pitch + x));
-      auto next2 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp2 + s2_pitch + x));
-      auto diff_next12 = _mm_subs_epu8(next1, next2);
-      auto diff_next21 = _mm_subs_epu8(next2, next1);
-      auto abs_diff_next = _mm_or_si128(diff_next12, diff_next21); // xmm0
-
-      auto curr1 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp1 + x));
-      auto curr2 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp2 + x));
-      auto diff_curr12 = _mm_subs_epu8(curr1, curr2);
-      auto diff_curr21 = _mm_subs_epu8(curr2, curr1);
-      auto abs_diff_curr = _mm_or_si128(diff_curr12, diff_curr21); // xmm2
-
-      auto prev1 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp1 - s1_pitch + x));
-      auto prev2 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp2 - s2_pitch + x));
-      auto diff_prev12 = _mm_subs_epu8(prev1, prev2);
-      auto diff_prev21 = _mm_subs_epu8(prev2, prev1);
-      auto abs_diff_prev = _mm_or_si128(diff_prev12, diff_prev21); // xmm1
-
-      auto cmp_prev = _mm_cmpeq_epi8(_mm_adds_epu8(abs_diff_prev, thresh), full_ff);
-      auto cmp_curr = _mm_cmpeq_epi8(_mm_adds_epu8(abs_diff_curr, thresh), full_ff);
-      auto cmp_next = _mm_cmpeq_epi8(_mm_adds_epu8(abs_diff_next, thresh), full_ff);
-      auto cmp = _mm_or_si128(_mm_or_si128(cmp_prev, cmp_curr), cmp_next);
-      _mm_store_si128(reinterpret_cast<__m128i *>(dstp + x), cmp);
-    }
-    srcp1 += s1_pitch;
-    srcp2 += s2_pitch;
-    dstp += dst_pitch;
-  }
-}
 
 
-void TFMPP::buildMotionMask2_SSE2(const uint8_t *srcp1, const uint8_t *srcp2,
-  const uint8_t *srcp3, uint8_t *dstp, int s1_pitch, int s2_pitch,
-  int s3_pitch, int dst_pitch, int width, int height, const CPUFeatures *cpu) const
-{
-    (void)cpu;
-
-  __m128i thresh = _mm_set1_epi8((char)(std::max(std::min(255 - mthresh - 1, 255), 0)));
-  __m128i all_ff = _mm_set1_epi8(-1);
-  __m128i onesByte = _mm_set1_epi8(0x01);
-  __m128i twosByte = _mm_set1_epi8(0x02);
-  __m128i foursByte = _mm_set1_epi8(0x04);
-  __m128i eightsByte = _mm_set1_epi8(0x08);
-  __m128i sixteensByte = _mm_set1_epi8(0x10);
-  __m128i thirtytwosByte = _mm_set1_epi8(0x20);
-  memset(dstp - dst_pitch, 0xFF, dst_pitch);
-  memset(dstp + dst_pitch*height, 0xFF, dst_pitch);
-  while (height--) {
-    for (int x = 0; x < width; x += 16) {
-      auto next1 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp1 + s1_pitch + x)); // prv?
-      auto next2 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp2 + s2_pitch + x)); // src?
-      auto next3 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp3 + s3_pitch + x)); // nxt?
-
-      auto absdiff12 = _mm_or_si128(_mm_subs_epu8(next1, next2), _mm_subs_epu8(next2, next1));
-      auto absdiff23 = _mm_or_si128(_mm_subs_epu8(next2, next3), _mm_subs_epu8(next3, next2));
-      auto cmp12 = _mm_cmpeq_epi8(_mm_adds_epu8(absdiff12, thresh), all_ff);
-      auto cmp23 = _mm_cmpeq_epi8(_mm_adds_epu8(absdiff23, thresh), all_ff);
-      auto masked_by_01_02 = _mm_or_si128(_mm_and_si128(cmp12, onesByte), _mm_and_si128(cmp23, twosByte));
-
-      auto curr1 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp1 + x)); // prv?
-      auto curr2 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp2 + x)); // src?
-      auto curr3 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp3 + x)); // nxt?
-
-      absdiff12 = _mm_or_si128(_mm_subs_epu8(curr1, curr2), _mm_subs_epu8(curr2, curr1));
-      absdiff23 = _mm_or_si128(_mm_subs_epu8(curr2, curr3), _mm_subs_epu8(curr3, curr2));
-      cmp12 = _mm_cmpeq_epi8(_mm_adds_epu8(absdiff12, thresh), all_ff);
-      cmp23 = _mm_cmpeq_epi8(_mm_adds_epu8(absdiff23, thresh), all_ff);
-      auto masked_by_04_08 = _mm_or_si128(_mm_and_si128(cmp12, foursByte), _mm_and_si128(cmp23, eightsByte));
-      
-      auto masked_by_01_02_04_08 = _mm_or_si128(masked_by_01_02, masked_by_04_08);
-
-      auto prev1 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp1 - s1_pitch + x)); // prv?
-      auto prev2 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp2 - s2_pitch + x)); // src?
-      auto prev3 = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp3 - s3_pitch + x)); // nxt?
-
-      absdiff12 = _mm_or_si128(_mm_subs_epu8(prev1, prev2), _mm_subs_epu8(prev2, prev1));
-      absdiff23 = _mm_or_si128(_mm_subs_epu8(prev2, prev3), _mm_subs_epu8(prev3, prev2));
-      cmp12 = _mm_cmpeq_epi8(_mm_adds_epu8(absdiff12, thresh), all_ff);
-      cmp23 = _mm_cmpeq_epi8(_mm_adds_epu8(absdiff23, thresh), all_ff);
-      auto masked_by_10_20 = _mm_or_si128(_mm_and_si128(cmp12, sixteensByte), _mm_and_si128(cmp23, thirtytwosByte));
-
-      auto masked_by_01_02_04_08_10_20 = _mm_or_si128(masked_by_01_02_04_08, masked_by_10_20);
-
-      _mm_store_si128(reinterpret_cast<__m128i *>(dstp + x), masked_by_01_02_04_08_10_20);
-
-    }
-    srcp1 += s1_pitch;
-    srcp2 += s2_pitch;
-    srcp3 += s3_pitch;
-    dstp += dst_pitch;
-  }
-}
 
 // not the same as in TDeint. Here 0xFF instead of 0x3C
 //void TFMPP::denoiseYUY2(const VSFrameRef *mask)
@@ -619,7 +487,6 @@ template<typename pixel_t>
 void TFMPP::BlendDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFrameRef *dst,
   bool nomask) const
 {
-  bool use_sse2 = cpuFlags.sse2;
 
   const int np = vi->format->numPlanes;
 
@@ -652,19 +519,12 @@ void TFMPP::BlendDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
     const int lines_to_process = height - 2;
     if (nomask)
     {
-      // fixme: hbd SIMD
-      if (sizeof(pixel_t) == 1 && use_sse2)
-        blendDeintMask_SSE2<false>((const uint8_t *)srcp, (uint8_t*)dstp, nullptr, src_pitch, dst_pitch, 0, width, lines_to_process);
-      else
-        blendDeintMask_C<pixel_t, false>(srcp, dstp, nullptr, src_pitch, dst_pitch, 0, width, lines_to_process);
+      blendDeintMask_C<pixel_t, false>(srcp, dstp, nullptr, src_pitch, dst_pitch, 0, width, lines_to_process);
     }
     else
     {
       // with mask
-      if (sizeof(pixel_t) == 1 && use_sse2)
-        blendDeintMask_SSE2<true>((const uint8_t*)srcp, (uint8_t*)dstp, maskp, src_pitch, dst_pitch, msk_pitch, width, lines_to_process);
-      else
-        blendDeintMask_C<pixel_t, true>(srcp, dstp, maskp, src_pitch, dst_pitch, msk_pitch, width, lines_to_process);
+      blendDeintMask_C<pixel_t, true>(srcp, dstp, maskp, src_pitch, dst_pitch, msk_pitch, width, lines_to_process);
     }
     srcpp += src_pitch * lines_to_process;
     srcp += src_pitch * lines_to_process;
@@ -678,54 +538,7 @@ void TFMPP::BlendDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
 }
 
 
-static AVS_FORCEINLINE __m128i _MM_BLENDV_EPI8(__m128i const& a, __m128i const& b, __m128i const& mask) {
-  //return  _mm_blendv_epi8 (a, b, mask);
-  auto andop = _mm_and_si128(mask, b);
-  auto andnop = _mm_andnot_si128(mask, a);
-  return _mm_or_si128(andop, andnop);
-}
 
-template<bool with_mask>
-void blendDeintMask_SSE2(const uint8_t *srcp, uint8_t *dstp,
-  const uint8_t *maskp, int src_pitch, int dst_pitch, int msk_pitch,
-  int width, int height)
-{
-  auto zero = _mm_setzero_si128();
-  auto twosWord = _mm_set1_epi16(2);
-  while (height--) {
-    for (int x = 0; x < width; x += 16) {
-      auto prev = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp - src_pitch + x));
-      auto curr = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp + x));
-      auto next = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp + src_pitch + x));
-      auto prev_lo = _mm_unpacklo_epi8(prev, zero);
-      auto curr_lo = _mm_unpacklo_epi8(curr, zero);
-      auto next_lo = _mm_unpacklo_epi8(next, zero);
-      auto prev_hi = _mm_unpackhi_epi8(prev, zero);
-      auto curr_hi = _mm_unpackhi_epi8(curr, zero);
-      auto next_hi = _mm_unpackhi_epi8(next, zero);
-      auto curr_lo_mul2 = _mm_slli_epi16(curr_lo, 1);
-      auto curr_hi_mul2 = _mm_slli_epi16(curr_hi, 1);
-      auto sum_lo = _mm_add_epi16(prev_lo, _mm_add_epi16(curr_lo_mul2, next_lo));
-      auto sum_hi = _mm_add_epi16(prev_hi, _mm_add_epi16(curr_hi_mul2, next_hi));
-      auto res_lo = _mm_srli_epi16(_mm_add_epi16(sum_lo, twosWord), 2); // (p + c*2 + n + 2) >> 2
-      auto res_hi = _mm_srli_epi16(_mm_add_epi16(sum_hi, twosWord), 2); // (p + c*2 + n + 2) >> 2
-      auto res = _mm_packus_epi16(res_lo, res_hi);
-
-      if constexpr (with_mask) {
-        auto mask = _mm_load_si128(reinterpret_cast<const __m128i*>(maskp + x));
-        res = _MM_BLENDV_EPI8(curr, res, mask); // if mask then res else curr
-      } else {
-          (void)maskp;
-          (void)msk_pitch;
-      }
-      _mm_store_si128(reinterpret_cast<__m128i *>(dstp + x), res);
-    }
-    srcp += src_pitch;
-    dstp += dst_pitch;
-    if constexpr(with_mask)
-      maskp += msk_pitch;
-  }
-}
 
 template<typename pixel_t, bool with_mask>
 void blendDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
@@ -765,7 +578,6 @@ template<typename pixel_t, int bits_per_pixel>
 void TFMPP::CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFrameRef *dst, bool nomask,
   int field) const
 {
-  bool use_sse2 = cpuFlags.sse2;
 
   const int np = vi->format->numPlanes;
 
@@ -813,15 +625,7 @@ void TFMPP::CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
       dstp += dst_pitch;
       // middle
       const int lines_to_process = height / 2 - 3;
-      if (bits_per_pixel == 8 && use_sse2)
-      {
-        // false: no mask
-        cubicDeintMask_SSE2<false>((const uint8_t *)srcp, (uint8_t*)dstp, nullptr, src_pitch, dst_pitch, 0, width, lines_to_process);
-      }
-      else
-      {
-        cubicDeintMask_C<pixel_t, bits_per_pixel, false>(srcp, dstp, nullptr, src_pitch, dst_pitch, 0, width, lines_to_process);
-      }
+      cubicDeintMask_C<pixel_t, bits_per_pixel, false>(srcp, dstp, nullptr, src_pitch, dst_pitch, 0, width, lines_to_process);
       srcppp += src_pitch * lines_to_process;
       srcpp += src_pitch * lines_to_process;
       srcp += src_pitch * lines_to_process;
@@ -850,17 +654,7 @@ void TFMPP::CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
       dstp += dst_pitch;
       // middle
       const int lines_to_process = height / 2 - 3;
-      if (bits_per_pixel == 8 && use_sse2)
-      {
-        // fixme: hbd SIMD sse2 for 10+ bits
-        // true: with_mask
-        cubicDeintMask_SSE2<true>((const uint8_t*)srcp, (uint8_t*)dstp, maskp, src_pitch, dst_pitch, msk_pitch, width, lines_to_process);
-      }
-      else
-      {
-        //for (int y = 4 - field; y < height - 3; y += 2)
-        cubicDeintMask_C<pixel_t, bits_per_pixel, true>(srcp, dstp, maskp, src_pitch, dst_pitch, msk_pitch, width, lines_to_process);
-      }
+      cubicDeintMask_C<pixel_t, bits_per_pixel, true>(srcp, dstp, maskp, src_pitch, dst_pitch, msk_pitch, width, lines_to_process);
       srcppp += src_pitch * lines_to_process;
       srcpp += src_pitch * lines_to_process;
       srcr += src_pitch * lines_to_process;
@@ -885,78 +679,6 @@ void TFMPP::CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
 }
 
 
-template<bool with_mask>
-void cubicDeintMask_SSE2(const uint8_t *srcp, uint8_t *dstp,
-  const uint8_t *maskp, int src_pitch, int dst_pitch, int msk_pitch,
-  int width, int height)
-{
-  /*
-  if (maskp[x] == 0xFF)
-  {
-    const int temp = (19 * (srcpp[x] + srcp[x]) - 3 * (srcppp[x] + srcpn[x]) + 16) >> 5;
-    if (temp > 255) dstp[x] = 255;
-    else if (temp < 0) dstp[x] = 0;
-    else dstp[x] = temp;
-  }
-  else 
-    dstp[x] = srcr[x];
-  */
-  const int s1 = src_pitch >> 1; // pitch was multiplied *2 before the call
-
-  auto zero = _mm_setzero_si128();
-  auto threeWord = _mm_set1_epi16(3);
-  auto sixteenWord = _mm_set1_epi16(16);
-  auto nineteenWord = _mm_set1_epi16(19);
-  while (height--) {
-    for (int x = 0; x < width; x += 16) {
-      auto prevprev = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp - src_pitch * 2 + x));
-      auto prev = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp - src_pitch + x));
-      auto curr = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp + x));
-      auto next = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp + src_pitch + x));
-      auto prevprev_lo = _mm_unpacklo_epi8(prevprev, zero);
-      auto next_lo = _mm_unpacklo_epi8(next, zero);
-      auto prevprev_hi = _mm_unpackhi_epi8(prevprev, zero);
-      auto next_hi = _mm_unpackhi_epi8(next, zero);
-
-      auto pp_plus_n_lo = _mm_add_epi16(prevprev_lo, next_lo); // pp_lo + n_lo
-      auto pp_plus_n_hi = _mm_add_epi16(prevprev_hi, next_hi); // pp_hi + n_hi
-      auto pp_plus_n_mul3_lo = _mm_mullo_epi16(pp_plus_n_lo, threeWord); // *3
-      auto pp_plus_n_mul3_hi = _mm_mullo_epi16(pp_plus_n_hi, threeWord);
-
-      auto prev_lo = _mm_unpacklo_epi8(prev, zero);
-      auto curr_lo = _mm_unpacklo_epi8(curr, zero);
-      auto prev_hi = _mm_unpackhi_epi8(prev, zero);
-      auto curr_hi = _mm_unpackhi_epi8(curr, zero);
-
-      auto p_plus_c_lo = _mm_add_epi16(prev_lo, curr_lo); // p_lo + c_lo
-      auto p_plus_c_hi = _mm_add_epi16(prev_hi, curr_hi); // p_hi + c_hi
-      auto p_plus_c_mul19_lo = _mm_mullo_epi16(p_plus_c_lo, nineteenWord); // *19
-      auto p_plus_c_mul19_hi = _mm_mullo_epi16(p_plus_c_hi, nineteenWord);
-
-      auto sub_lo = _mm_subs_epu16(p_plus_c_mul19_lo, pp_plus_n_mul3_lo); // *19 - *3
-      auto sub_hi = _mm_subs_epu16(p_plus_c_mul19_hi, pp_plus_n_mul3_hi);
-
-      auto res_lo = _mm_srli_epi16(_mm_add_epi16(sub_lo, sixteenWord), 5); // +16, >> 5
-      auto res_hi = _mm_srli_epi16(_mm_add_epi16(sub_hi, sixteenWord), 5);
-      auto res = _mm_packus_epi16(res_lo, res_hi);
-
-      if constexpr (with_mask) {
-        auto mask = _mm_load_si128(reinterpret_cast<const __m128i*>(maskp + x));
-        // s1 is the normal src_pitch (half of the doubled)
-        auto curr2 = _mm_load_si128(reinterpret_cast<const __m128i*>(srcp - s1 + x)); // == srcp - s1 + x
-        res = _MM_BLENDV_EPI8(curr2, res, mask); // if mask then res else curr
-      } else {
-          (void)maskp;
-          (void)msk_pitch;
-      }
-      _mm_store_si128(reinterpret_cast<__m128i *>(dstp + x), res);
-    }
-    srcp += src_pitch;
-    dstp += dst_pitch;
-    if constexpr(with_mask)
-      maskp += msk_pitch;
-  }
-}
 
 template<typename pixel_t, int bits_per_pixel, bool with_mask>
 void cubicDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
@@ -1715,8 +1437,6 @@ void TFMPP::elaDeintPlanar(VSFrameRef *dst, const VSFrameRef *mask, const VSFram
 void TFMPP::maskClip2(const VSFrameRef *src, const VSFrameRef *deint, const VSFrameRef *mask,
   VSFrameRef *dst) const
 {
-  const bool use_sse2 = cpuFlags.sse2;
-  const bool use_sse4 = cpuFlags.sse4_1;
 
   const uint8_t *srcp, *maskp, *dntp;
   uint8_t *dstp;
@@ -1742,26 +1462,15 @@ void TFMPP::maskClip2(const VSFrameRef *src, const VSFrameRef *deint, const VSFr
     dstp = vsapi->getWritePtr(dst, plane);
     dst_pitch = vsapi->getStride(dst, plane);
 
-    using maskClip2_fn_t = decltype(maskClip2_SSE2);
+    using maskClip2_fn_t = decltype(maskClip2_C<uint8_t>);
     maskClip2_fn_t* maskClip2_fn;
 
-    if (pixelsize == 1) {
-      if (use_sse4)
-        maskClip2_fn = maskClip2_SSE4<uint8_t>;
-      else if (use_sse2)
-        maskClip2_fn = maskClip2_SSE2;
-      else
-        maskClip2_fn = maskClip2_C<uint8_t>;
-    }
-    else if (pixelsize == 2) {
-      if (use_sse4)
-        maskClip2_fn = maskClip2_SSE4<uint16_t>;
-      else
-        maskClip2_fn = maskClip2_C<uint16_t>;
-    }
-    else {
+    if (pixelsize == 1)
+      maskClip2_fn = maskClip2_C<uint8_t>;
+    else if (pixelsize == 2)
+      maskClip2_fn = maskClip2_C<uint16_t>;
+    else
       return; // n/a no float support
-    }
 
     maskClip2_fn(srcp, dntp, maskp, dstp, src_pitch, dnt_pitch, msk_pitch, dst_pitch, width, height);
   }
@@ -1789,58 +1498,8 @@ void maskClip2_C(const uint8_t* srcp, const uint8_t* dntp,
   }
 }
 
-template<typename pixel_t>
-#if defined(GCC) || defined(CLANG)
-__attribute__((__target__("sse4.1")))
-#endif 
-void maskClip2_SSE4(const uint8_t* srcp, const uint8_t* dntp,
-  const uint8_t* maskp, uint8_t* dstp, int src_pitch, int dnt_pitch,
-  int msk_pitch, int dst_pitch, int width, int height)
-{
-  // mask is always 8 bits 0x00 or 0xFF
-  while (height--) {
-    for (int x = 0; x < width; x += 16 / sizeof(pixel_t)) {
-      __m128i mask;
-      if constexpr(sizeof(pixel_t) == 1)
-        mask = _mm_load_si128(reinterpret_cast<const __m128i*>(maskp + x));
-      else
-        mask = _mm_cvtepi8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(maskp + x))); // keep FF to FFFF
-      // if mask is FF (FFFF) then use dnt else use src
-      auto dnt = _mm_load_si128(reinterpret_cast<const __m128i*>(dntp + x * sizeof(pixel_t)));
-      auto src = _mm_load_si128(reinterpret_cast<const __m128i*>(srcp + x * sizeof(pixel_t)));
-      auto res = _mm_blendv_epi8(src, dnt, mask); // a, b, mask: if mask then b else a
-      _mm_store_si128(reinterpret_cast<__m128i*>(dstp + x * sizeof(pixel_t)), res);
-    }
-    srcp += src_pitch;
-    dntp += dnt_pitch;
-    dstp += dst_pitch;
-    maskp += msk_pitch;
-  }
-}
 
 // 8 bit only
-void maskClip2_SSE2(const uint8_t *srcp, const uint8_t *dntp,
-  const uint8_t *maskp, uint8_t *dstp, int src_pitch, int dnt_pitch,
-  int msk_pitch, int dst_pitch, int width, int height)
-{
-  // mask is always 8 bits
-  __m128i onesMask = _mm_set1_epi8(-1);
-  while (height--) {
-    for (int x = 0; x < width; x += 16) {
-      auto mask = _mm_load_si128(reinterpret_cast<const __m128i *>(maskp + x));
-      // if mask is FF then use dnt else use src
-      auto dnt_masked = _mm_and_si128(_mm_load_si128(reinterpret_cast<const __m128i *>(dntp + x)), mask);
-      auto src = _mm_load_si128(reinterpret_cast<const __m128i *>(srcp + x));
-      auto src_masked = _mm_and_si128(_mm_xor_si128(mask, onesMask), src); // masked with inverse mask
-      auto res = _mm_or_si128(src_masked, dnt_masked);
-      _mm_store_si128(reinterpret_cast<__m128i *>(dstp + x), res);
-    }
-    srcp += src_pitch;
-    dntp += dnt_pitch;
-    dstp += dst_pitch;
-    maskp += msk_pitch;
-  }
-}
 
 
 TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _display,
@@ -1857,8 +1516,6 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
   char linein[1024], *linep, *linet;
   std::unique_ptr<FILE, decltype (&fclose)> f(nullptr, nullptr);
 
-  cpuFlags = *getCPUFeatures();
-  if (opt == 0) memset(&cpuFlags, 0, sizeof(cpuFlags));
 
   if (vi->format->bitsPerSample > 16)
     throw TIVTCError("TFMPP:  only 8-16 bit formats supported!");

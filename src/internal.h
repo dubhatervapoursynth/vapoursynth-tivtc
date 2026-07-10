@@ -10,8 +10,6 @@
 #endif
 
 // these settings control whether the included code comes from old asm or newer simd/C rewrites
-#define USE_C_NO_ASM
-// USE_C_NO_ASM: inline non-simd asm
 
 
 #ifdef _WIN32

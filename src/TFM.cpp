@@ -26,7 +26,6 @@
 #include <cstring>
 
 #include "TFM.h"
-#include "TFMasm.h"
 #include "TCommonASM.h"
 
 enum _FieldBased {
@@ -1016,120 +1015,6 @@ int TFM::compareFields_core(const VSFrameRef *prv, const VSFrameRef *src, const 
       mapn += map_pitch;
     }
 
-#if 0
-    // TFM 874
-    __asm
-    {
-      push ebx // pf170421
-
-      mov y, 2
-      yloop:
-      mov ecx, y0a
-        mov edx, y1a
-        cmp ecx, edx
-        je xloop_pre
-        mov eax, y
-        cmp eax, ecx
-        jl xloop_pre
-        cmp eax, edx
-        jle end_yloop
-        xloop_pre :
-      mov esi, incl
-        mov ebx, startx
-        mov edi, mapp
-        mov edx, mapn
-        mov ecx, stopx
-        xloop :
-      movzx eax, BYTE PTR[edi + ebx]
-        shl eax, 2
-        add al, BYTE PTR[edx + ebx]
-        jnz b1
-        add ebx, esi
-        cmp ebx, ecx
-        jl xloop
-        jmp end_yloop
-        b1 :
-      mov edx, curf
-        mov edi, curpf
-        movzx ecx, BYTE PTR[edx + ebx]
-        movzx esi, BYTE PTR[edi + ebx]
-        shl ecx, 2
-        mov edx, curnf
-        add ecx, esi
-        mov edi, prvpf
-        movzx esi, BYTE PTR[edx + ebx]
-        movzx edx, BYTE PTR[edi + ebx]
-        add ecx, esi
-        mov edi, prvnf
-        movzx esi, BYTE PTR[edi + ebx]
-        add edx, esi
-        mov edi, edx
-        add edx, edx
-        sub edi, ecx
-        add edx, edi
-        jge b2
-        neg edx
-        b2 :
-      cmp edx, 23
-        jle p1
-        add accumPc, edx
-        cmp edx, 42
-        jle p1
-        test eax, 10
-        jz p1
-        add accumPm, edx
-        p1 :
-      mov edi, nxtpf
-        mov esi, nxtnf
-        movzx edx, BYTE PTR[edi + ebx]
-        movzx edi, BYTE PTR[esi + ebx]
-        add edx, edi
-        mov esi, edx
-        add edx, edx
-        sub esi, ecx
-        add edx, esi
-        jge b3
-        neg edx
-        b3 :
-      cmp edx, 23
-        jle p2
-        add accumNc, edx
-        cmp edx, 42
-        jle p2
-        test eax, 10
-        jz p2
-        add accumNm, edx
-        p2 :
-      mov esi, incl
-        mov ecx, stopx
-        mov edi, mapp
-        add ebx, esi
-        mov edx, mapn
-        cmp ebx, ecx
-        jl xloop
-        end_yloop :
-      mov esi, Height
-        mov eax, prvf_pitch
-        mov ebx, curf_pitch
-        mov ecx, nxtf_pitch
-        mov edi, map_pitch
-        sub esi, 2
-        add y, 2
-        add mapp, edi
-        add prvpf, eax
-        add curpf, ebx
-        add prvnf, eax
-        add curf, ebx
-        add nxtpf, ecx
-        add curnf, ebx
-        add nxtnf, ecx
-        add mapn, edi
-        cmp y, esi
-        jl yloop
-
-        pop ebx // pf170421
-    }
-#endif
   }
 
   // High bit depth: I chose to scale back to 8 bit range.
@@ -1345,7 +1230,6 @@ int TFM::compareFieldsSlow_core(const VSFrameRef *prv, const VSFrameRef *src, co
           nxtf_pitch * sizeof(pixel_t),
           map_pitch, Height, Width, tpitch_current, bits_per_pixel);
 
-#ifdef USE_C_NO_ASM
     const int Const23 = 23 << (bits_per_pixel - 8);
     const int Const42 = 42 << (bits_per_pixel - 8);
 
@@ -1400,135 +1284,6 @@ int TFM::compareFieldsSlow_core(const VSFrameRef *prv, const VSFrameRef *src, co
       mapn += map_pitch;
     }
 
-#else
-    // TFM 1144
-    __asm
-    {
-      push ebx // pf170421
-
-      mov y, 2
-      yloop:
-      mov ecx, y0a
-        mov edx, y1a
-        cmp ecx, edx
-        je xloop_pre
-        mov eax, y
-        cmp eax, ecx
-        jl xloop_pre
-        cmp eax, edx
-        jle end_yloop
-        xloop_pre :
-      mov esi, incl
-        mov ebx, startx
-        mov edi, mapp
-        mov edx, mapn
-        mov ecx, stopx
-        xloop :
-      movzx eax, BYTE PTR[edi + ebx]
-        shl eax, 3
-        add al, BYTE PTR[edx + ebx]
-        jnz b1
-        add ebx, esi
-        cmp ebx, ecx
-        jl xloop
-        jmp end_yloop
-        b1 :
-      mov edx, curf
-        mov edi, curpf
-        movzx ecx, BYTE PTR[edx + ebx]
-        movzx esi, BYTE PTR[edi + ebx]
-        shl ecx, 2
-        mov edx, curnf
-        add ecx, esi
-        mov edi, prvpf
-        movzx esi, BYTE PTR[edx + ebx]
-        movzx edx, BYTE PTR[edi + ebx]
-        add ecx, esi
-        mov edi, prvnf
-        movzx esi, BYTE PTR[edi + ebx]
-        add edx, esi
-        mov edi, edx
-        add edx, edx
-        sub edi, ecx
-        add edx, edi
-        jge b3
-        neg edx
-        b3 :
-      cmp edx, 23
-        jle p3
-        test eax, 9
-        jz p1
-        add accumPc, edx
-        p1 :
-      cmp edx, 42
-        jle p3
-        test eax, 18
-        jz p2
-        add accumPm, edx
-        p2 :
-      test eax, 36
-        jz p3
-        add accumPml, edx
-        p3 :
-      mov edi, nxtpf
-        mov esi, nxtnf
-        movzx edx, BYTE PTR[edi + ebx]
-        movzx edi, BYTE PTR[esi + ebx]
-        add edx, edi
-        mov esi, edx
-        add edx, edx
-        sub esi, ecx
-        add edx, esi
-        jge b2
-        neg edx
-        b2 :
-      cmp edx, 23
-        jle p6
-        test eax, 9
-        jz p4
-        add accumNc, edx
-        p4 :
-      cmp edx, 42
-        jle p6
-        test eax, 18
-        jz p5
-        add accumNm, edx
-        p5 :
-      test eax, 36
-        jz p6
-        add accumNml, edx
-        p6 :
-      mov esi, incl
-        mov ecx, stopx
-        mov edi, mapp
-        add ebx, esi
-        mov edx, mapn
-        cmp ebx, ecx
-        jl xloop
-        end_yloop :
-      mov esi, Height
-        mov eax, prvf_pitch
-        mov ebx, curf_pitch
-        mov ecx, nxtf_pitch
-        mov edi, map_pitch
-        sub esi, 2
-        add y, 2
-        add mapp, edi
-        add prvpf, eax
-        add curpf, ebx
-        add prvnf, eax
-        add curf, ebx
-        add nxtpf, ecx
-        add curnf, ebx
-        add nxtnf, ecx
-        add mapn, edi
-        cmp y, esi
-        jl yloop
-
-        pop ebx // pf170421
-
-    }
-#endif
   }
 
   const unsigned int Const500 = 500 << (bits_per_pixel - 8);
@@ -1928,407 +1683,6 @@ int TFM::compareFieldsSlow2_core(const VSFrameRef *prv, const VSFrameRef *src, c
 
     }
 
-#if 0
-    if (field == 0)
-    {
-      // TFM 1436
-      __asm
-      {
-        push ebx // pf170421
-
-        mov y, 2
-        yloop0:
-        mov ecx, y0a
-          mov edx, y1a
-          cmp ecx, edx
-          je xloop_pre0
-          mov eax, y
-          cmp eax, ecx
-          jl xloop_pre0
-          cmp eax, edx
-          jle end_yloop0
-          xloop_pre0 :
-        mov esi, incl
-          mov ebx, startx
-          mov edi, mapp
-          mov edx, mapn
-          mov ecx, stopx
-          xloop0 :
-        movzx eax, BYTE PTR[edi + ebx]
-          shl eax, 3
-          add al, BYTE PTR[edx + ebx]
-          jnz b10
-          add ebx, esi
-          cmp ebx, ecx
-          jl xloop0
-          jmp end_yloop0
-          b10 :
-        mov edx, curf
-          mov edi, curpf
-          movzx ecx, BYTE PTR[edx + ebx]
-          movzx esi, BYTE PTR[edi + ebx]
-          shl ecx, 2
-          mov edx, curnf
-          add ecx, esi
-          mov edi, prvpf
-          movzx esi, BYTE PTR[edx + ebx]
-          movzx edx, BYTE PTR[edi + ebx]
-          add ecx, esi
-          mov edi, prvnf
-          movzx esi, BYTE PTR[edi + ebx]
-          add edx, esi
-          mov edi, edx
-          add edx, edx
-          sub edi, ecx
-          add edx, edi
-          jge b30
-          neg edx
-          b30 :
-        cmp edx, 23
-          jle p30
-          test eax, 9
-          jz p10
-          add accumPc, edx
-          p10 :
-        cmp edx, 42
-          jle p30
-          test eax, 18
-          jz p20
-          add accumPm, edx
-          p20 :
-        test eax, 36
-          jz p30
-          add accumPml, edx
-          p30 :
-        mov edi, nxtpf
-          mov esi, nxtnf
-          movzx edx, BYTE PTR[edi + ebx]
-          movzx edi, BYTE PTR[esi + ebx]
-          add edx, edi
-          mov esi, edx
-          add edx, edx
-          sub esi, ecx
-          add edx, esi
-          jge b20
-          neg edx
-          b20 :
-        cmp edx, 23
-          jle p60
-          test eax, 9
-          jz p40
-          add accumNc, edx
-          p40 :
-        cmp edx, 42
-          jle p60
-          test eax, 18
-          jz p50
-          add accumNm, edx
-          p50 :
-        test eax, 36
-          jz p60
-          add accumNml, edx
-          p60 :
-        test eax, 56
-          jz p120
-          mov ecx, prvpf
-          mov edi, prvppf
-          movzx edx, BYTE PTR[ecx + ebx]
-          movzx esi, BYTE PTR[edi + ebx]
-          shl edx, 2
-          mov ecx, prvnf
-          add edx, esi
-          mov edi, curpf
-          movzx esi, BYTE PTR[ecx + ebx]
-          movzx ecx, BYTE PTR[edi + ebx]
-          add edx, esi
-          mov edi, curf
-          movzx esi, BYTE PTR[edi + ebx]
-          add ecx, esi
-          mov edi, ecx
-          add ecx, ecx
-          add ecx, edi
-          sub edx, ecx
-          jge b40
-          neg edx
-          b40 :
-        cmp edx, 23
-          jle p90
-          test eax, 8
-          jz p70
-          add accumPc, edx
-          p70 :
-        cmp edx, 42
-          jle p90
-          test eax, 16
-          jz p80
-          add accumPm, edx
-          p80 :
-        test eax, 32
-          jz p90
-          add accumPml, edx
-          p90 :
-        mov edi, nxtpf
-          mov esi, nxtppf
-          movzx edx, BYTE PTR[edi + ebx]
-          movzx edi, BYTE PTR[esi + ebx]
-          shl edx, 2
-          mov esi, nxtnf
-          add edx, edi
-          movzx edi, BYTE PTR[esi + ebx]
-          add edx, edi
-          sub edx, ecx
-          jge b50
-          neg edx
-          b50 :
-        cmp edx, 23
-          jle p120
-          test eax, 8
-          jz p100
-          add accumNc, edx
-          p100 :
-        cmp edx, 42
-          jle p120
-          test eax, 16
-          jz p110
-          add accumNm, edx
-          p110 :
-        test eax, 32
-          jz p120
-          add accumNml, edx
-          p120 :
-        mov esi, incl
-          mov ecx, stopx
-          mov edi, mapp
-          add ebx, esi
-          mov edx, mapn
-          cmp ebx, ecx
-          jl xloop0
-          end_yloop0 :
-        mov esi, Height
-          mov eax, prvf_pitch
-          mov ebx, curf_pitch
-          mov ecx, nxtf_pitch
-          mov edi, map_pitch
-          sub esi, 2
-          add y, 2
-          add mapp, edi
-          add prvpf, eax
-          add curpf, ebx
-          add prvnf, eax
-          add curf, ebx
-          add nxtpf, ecx
-          add prvppf, eax
-          add curnf, ebx
-          add nxtnf, ecx
-          add mapn, edi
-          add nxtppf, ecx
-          cmp y, esi
-          jl yloop0
-
-          pop ebx // pf170421
-      }
-    }
-    else
-    {
-      // TFM 1633
-      __asm
-      {
-        push ebx // pf170421
-
-        mov y, 2
-        yloop1:
-        mov ecx, y0a
-          mov edx, y1a
-          cmp ecx, edx
-          je xloop_pre1
-          mov eax, y
-          cmp eax, ecx
-          jl xloop_pre1
-          cmp eax, edx
-          jle end_yloop1
-          xloop_pre1 :
-        mov esi, incl
-          mov ebx, startx
-          mov edi, mapp
-          mov edx, mapn
-          mov ecx, stopx
-          xloop1 :
-        movzx eax, BYTE PTR[edi + ebx]
-          shl eax, 3
-          add al, BYTE PTR[edx + ebx]
-          jnz b11
-          add ebx, esi
-          cmp ebx, ecx
-          jl xloop1
-          jmp end_yloop1
-          b11 :
-        mov edx, curf
-          mov edi, curpf
-          movzx ecx, BYTE PTR[edx + ebx]
-          movzx esi, BYTE PTR[edi + ebx]
-          shl ecx, 2
-          mov edx, curnf
-          add ecx, esi
-          mov edi, prvpf
-          movzx esi, BYTE PTR[edx + ebx]
-          movzx edx, BYTE PTR[edi + ebx]
-          add ecx, esi
-          mov edi, prvnf
-          movzx esi, BYTE PTR[edi + ebx]
-          add edx, esi
-          mov edi, edx
-          add edx, edx
-          sub edi, ecx
-          add edx, edi
-          jge b31
-          neg edx
-          b31 :
-        cmp edx, 23
-          jle p31
-          test eax, 9
-          jz p11
-          add accumPc, edx
-          p11 :
-        cmp edx, 42
-          jle p31
-          test eax, 18
-          jz p21
-          add accumPm, edx
-          p21 :
-        test eax, 36
-          jz p31
-          add accumPml, edx
-          p31 :
-        mov edi, nxtpf
-          mov esi, nxtnf
-          movzx edx, BYTE PTR[edi + ebx]
-          movzx edi, BYTE PTR[esi + ebx]
-          add edx, edi
-          mov esi, edx
-          add edx, edx
-          sub esi, ecx
-          add edx, esi
-          jge b21
-          neg edx
-          b21 :
-        cmp edx, 23
-          jle p61
-          test eax, 9
-          jz p41
-          add accumNc, edx
-          p41 :
-        cmp edx, 42
-          jle p61
-          test eax, 18
-          jz p51
-          add accumNm, edx
-          p51 :
-        test eax, 36
-          jz p61
-          add accumNml, edx
-          p61 :
-        test eax, 7
-          jz p121
-          mov ecx, prvnf
-          mov edi, prvpf
-          movzx edx, BYTE PTR[ecx + ebx]
-          movzx esi, BYTE PTR[edi + ebx]
-          shl edx, 2
-          mov ecx, prvnnf
-          add edx, esi
-          mov edi, curf
-          movzx esi, BYTE PTR[ecx + ebx]
-          movzx ecx, BYTE PTR[edi + ebx]
-          add edx, esi
-          mov edi, curnf
-          movzx esi, BYTE PTR[edi + ebx]
-          add ecx, esi
-          mov edi, ecx
-          add ecx, ecx
-          add ecx, edi
-          sub edx, ecx
-          jge b41
-          neg edx
-          b41 :
-        cmp edx, 23
-          jle p91
-          test eax, 1
-          jz p71
-          add accumPc, edx
-          p71 :
-        cmp edx, 42
-          jle p91
-          test eax, 2
-          jz p81
-          add accumPm, edx
-          p81 :
-        test eax, 4
-          jz p91
-          add accumPml, edx
-          p91 :
-        mov edi, nxtnf
-          mov esi, nxtpf
-          movzx edx, BYTE PTR[edi + ebx]
-          movzx edi, BYTE PTR[esi + ebx]
-          shl edx, 2
-          mov esi, nxtnnf
-          add edx, edi
-          movzx edi, BYTE PTR[esi + ebx]
-          add edx, edi
-          sub edx, ecx
-          jge b51
-          neg edx
-          b51 :
-        cmp edx, 23
-          jle p121
-          test eax, 1
-          jz p101
-          add accumNc, edx
-          p101 :
-        cmp edx, 42
-          jle p121
-          test eax, 2
-          jz p111
-          add accumNm, edx
-          p111 :
-        test eax, 4
-          jz p121
-          add accumNml, edx
-          p121 :
-        mov esi, incl
-          mov ecx, stopx
-          mov edi, mapp
-          add ebx, esi
-          mov edx, mapn
-          cmp ebx, ecx
-          jl xloop1
-          end_yloop1 :
-        mov esi, Height
-          mov eax, prvf_pitch
-          mov ebx, curf_pitch
-          mov ecx, nxtf_pitch
-          mov edi, map_pitch
-          sub esi, 2
-          add y, 2
-          add mapp, edi
-          add prvpf, eax
-          add curpf, ebx
-          add prvnf, eax
-          add curf, ebx
-          add prvnnf, eax
-          add nxtpf, ecx
-          add curnf, ebx
-          add nxtnf, ecx
-          add mapn, edi
-          add nxtnnf, ecx
-          cmp y, esi
-          jl yloop1
-
-          pop ebx // pf170421
-
-      }
-    }
-#endif
   }
 
   const unsigned int Const500 = 500 << (bits_per_pixel - 8);
@@ -2510,36 +1864,29 @@ bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, co
   srcp += (1 - field)*(src_pitch >> 1);
   nxtp += (1 - field)*(nxt_pitch >> 1);
 
-  bool use_sse2 = cpuFlags.sse2;
 
   if (sclast.frame == n)
   {
     diffp = ((uint64_t)sclast.diff) << (bits_per_pixel - 8);
-      if (sizeof(pixel_t) == 1 && use_sse2)
-        checkSceneChangePlanar_1_SSE2(srcp, nxtp, height, width, src_pitch, nxt_pitch, diffn);
-      else
-        checkSceneChangePlanar_1_c<pixel_t>(
-          reinterpret_cast<const pixel_t*>(srcp),
-          reinterpret_cast<const pixel_t*>(nxtp),
-          height, width, 
-          src_pitch / sizeof(pixel_t), 
-          nxt_pitch / sizeof(pixel_t),
-          diffn);
+      checkSceneChangePlanar_1_c<pixel_t>(
+        reinterpret_cast<const pixel_t*>(srcp),
+        reinterpret_cast<const pixel_t*>(nxtp),
+        height, width,
+        src_pitch / sizeof(pixel_t),
+        nxt_pitch / sizeof(pixel_t),
+        diffn);
   }
   else
   {
-      if (sizeof(pixel_t) == 1 && use_sse2)
-        checkSceneChangePlanar_2_SSE2(prvp, srcp, nxtp, height, width, prv_pitch, src_pitch, nxt_pitch, diffp, diffn);
-      else
-        checkSceneChangePlanar_2_c<pixel_t>(
-          reinterpret_cast<const pixel_t*>(prvp), 
-          reinterpret_cast<const pixel_t*>(srcp),
-          reinterpret_cast<const pixel_t*>(nxtp),
-          height, width, 
-          prv_pitch / sizeof(pixel_t),
-          src_pitch / sizeof(pixel_t),
-          nxt_pitch / sizeof(pixel_t),
-          diffp, diffn);
+      checkSceneChangePlanar_2_c<pixel_t>(
+        reinterpret_cast<const pixel_t*>(prvp),
+        reinterpret_cast<const pixel_t*>(srcp),
+        reinterpret_cast<const pixel_t*>(nxtp),
+        height, width,
+        prv_pitch / sizeof(pixel_t),
+        src_pitch / sizeof(pixel_t),
+        nxt_pitch / sizeof(pixel_t),
+        diffp, diffn);
   }
 
   // scale back to 8 bit world
@@ -2681,7 +2028,7 @@ void TFM::buildDiffMapPlane2(const uint8_t *prvp, const uint8_t *nxtp,
   uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
   int Width, int bits_per_pixel) const
 {
-  do_buildABSDiffMask2<pixel_t>(prvp, nxtp, dstp, prv_pitch, nxt_pitch, dst_pitch, Width, Height, &cpuFlags, bits_per_pixel);
+  do_buildABSDiffMask2<pixel_t>(prvp, nxtp, dstp, prv_pitch, nxt_pitch, dst_pitch, Width, Height, bits_per_pixel);
 }
 
 // instantiate
@@ -2696,7 +2043,7 @@ template<typename pixel_t>
 void TFM::buildABSDiffMask(const uint8_t *prvp, const uint8_t *nxtp,
   int prv_pitch, int nxt_pitch, int tpitch, int width, int height) const
 {
-  do_buildABSDiffMask<pixel_t>(prvp, nxtp, tbuffer.get(), prv_pitch, nxt_pitch, tpitch, width, height, &cpuFlags);
+  do_buildABSDiffMask<pixel_t>(prvp, nxtp, tbuffer.get(), prv_pitch, nxt_pitch, tpitch, width, height);
 }
 
 // instantiate
@@ -2758,8 +2105,6 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   std::unique_ptr<FILE, decltype (&fclose)> f(nullptr, nullptr);
 
 
-  cpuFlags = *getCPUFeatures();
-  if (opt == 0) memset(&cpuFlags, 0, sizeof(cpuFlags));
 
   if (!vi->format || vi->width == 0 || vi->height == 0)
       throw TIVTCError("TFM: the input clip must have constant format and dimensions.");

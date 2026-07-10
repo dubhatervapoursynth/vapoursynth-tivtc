@@ -28,31 +28,30 @@
 
 // hbd ready
 void blurFrame(const VSFrameRef *src, VSFrameRef *dst, int iterations,
-  bool bchroma, const CPUFeatures *cpuFlags, VSCore *core, const VSAPI *vsapi)
+  bool bchroma, VSCore *core, const VSAPI *vsapi)
 {
     const VSFormat *format = vsapi->getFrameFormat(src);
     int width = vsapi->getFrameWidth(src, 0);
     int height = vsapi->getFrameHeight(src, 0);
 
   VSFrameRef *tmp = vsapi->newVideoFrame(format, width, height, nullptr, core);
-  HorizontalBlur(src, tmp, bchroma, cpuFlags, vsapi);
-  VerticalBlur(tmp, dst, bchroma, cpuFlags, vsapi);
+  HorizontalBlur(src, tmp, bchroma, vsapi);
+  VerticalBlur(tmp, dst, bchroma, vsapi);
   for (int i = 1; i < iterations; ++i)
   {
-    HorizontalBlur(dst, tmp, bchroma, cpuFlags, vsapi);
-    VerticalBlur(tmp, dst, bchroma, cpuFlags, vsapi);
+    HorizontalBlur(dst, tmp, bchroma, vsapi);
+    VerticalBlur(tmp, dst, bchroma, vsapi);
   }
   vsapi->freeFrame(tmp);
 }
 
 void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
-  const CPUFeatures *cpuFlags, const VSAPI *vsapi)
+  const VSAPI *vsapi)
 {
     const VSFormat *format = vsapi->getFrameFormat(src);
 
   const int np = !bchroma ? 1 : format->numPlanes;
 
-  const bool use_sse2 = cpuFlags->sse2;
 
   const int pixelsize = format->bytesPerSample;
 
@@ -67,21 +66,10 @@ void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
     uint8_t *dstp = vsapi->getWritePtr(dst, plane);
     int dst_pitch = vsapi->getStride(dst, plane);
 
-      if (pixelsize == 1 && use_sse2 && widtha >= 16) // kernel needs a full 8px left + 8px right block
-      {
-        // always mod 8, sse2 unaligned!
-        HorizontalBlur_Planar_SSE2(srcp, dstp, src_pitch, dst_pitch, widtha, height);
-        // rest non mod 8 no the right
-        HorizontalBlur_Planar_c<uint8_t>(srcp + widtha, dstp + widtha, src_pitch, dst_pitch, width - widtha, height, true);
-      }
-      else
-      {
-        // fixme: implement SIMD for 10-16 bits
-        if(pixelsize == 1)
-          HorizontalBlur_Planar_c<uint8_t>(srcp, dstp, src_pitch, dst_pitch, width, height, false);
-        else // 10-16 bits
-          HorizontalBlur_Planar_c<uint16_t>(srcp, dstp, src_pitch, dst_pitch, width, height, false);
-      }
+      if(pixelsize == 1)
+        HorizontalBlur_Planar_c<uint8_t>(srcp, dstp, src_pitch, dst_pitch, width, height, false);
+      else // 10-16 bits
+        HorizontalBlur_Planar_c<uint16_t>(srcp, dstp, src_pitch, dst_pitch, width, height, false);
   }
 }
 
@@ -149,27 +137,14 @@ void VerticalBlur_c(const uint8_t* srcp0, uint8_t* dstp0, int src_pitch,
 //    dstp[x] = (srcpp[x] + srcp[x] + 1) >> 1;
 //}
 
-void VerticalBlur_SSE2(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-  int dst_pitch, int width, int height)
-{
-  VerticalBlurSSE2_R(srcp + src_pitch, dstp + dst_pitch, src_pitch, dst_pitch, width, height - 2);
-  int temps = (height - 1) * src_pitch;
-  int tempd = (height - 1) * dst_pitch;
-  for (int x = 0; x < width; ++x)
-  {
-    dstp[x] = (srcp[x] + srcp[x + src_pitch] + 1) >> 1;
-    dstp[tempd + x] = (srcp[temps + x] + srcp[temps + x - src_pitch] + 1) >> 1;
-  }
-}
 
 void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
-  const CPUFeatures *cpuFlags, const VSAPI *vsapi)
+  const VSAPI *vsapi)
 {
     const VSFormat *format = vsapi->getFrameFormat(src);
 
   const int np = !bchroma ? 1 : format->numPlanes;
 
-  const bool use_sse2 = cpuFlags->sse2;
 
   const int pixelsize = format->bytesPerSample;
 
@@ -184,20 +159,10 @@ void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
     uint8_t* dstp = vsapi->getWritePtr(dst, plane);
     int dst_pitch = vsapi->getStride(dst, plane);
 
-      if (pixelsize == 1 && use_sse2 && widtha >= 16)
-      {
-        // 16x block is Ok
-        VerticalBlur_SSE2(srcp, dstp, src_pitch, dst_pitch, widtha, height);
-        //the rest on the right not covered by SIMD
-        VerticalBlur_c<uint8_t>(srcp + widtha, dstp + widtha, src_pitch, dst_pitch, width - widtha, height);
-      }
-      else {
-        // fixme: implement SIMD for 10-16 bits
-        if(pixelsize == 1)
-          VerticalBlur_c<uint8_t>(srcp, dstp, src_pitch, dst_pitch, width, height);
-        else // 10-16 bits
-          VerticalBlur_c<uint16_t>(srcp, dstp, src_pitch, dst_pitch, width, height);
-      }
+      if(pixelsize == 1)
+        VerticalBlur_c<uint8_t>(srcp, dstp, src_pitch, dst_pitch, width, height);
+      else // 10-16 bits
+        VerticalBlur_c<uint16_t>(srcp, dstp, src_pitch, dst_pitch, width, height);
 
   }
 }
@@ -324,31 +289,6 @@ void HorizontalBlur_Planar_c(const uint8_t* srcp0, uint8_t* dstp0, int src_pitch
 //}
 
 // always mod 8, sse2 unaligned
-void HorizontalBlur_Planar_SSE2(const uint8_t *srcp, uint8_t *dstp, int src_pitch,
-  int dst_pitch, int width, int height)
-{
-  // left and right 8 pixel is omitted in SIMD, special
-  HorizontalBlurSSE2_Planar_R(srcp + 8, dstp + 8, src_pitch, dst_pitch, width - 16, height);
-  for (int y = 0; y < height; ++y)
-  {
-    dstp[0] = (srcp[0] + srcp[1] + 1) >> 1;
-    dstp[1] = (srcp[0] + (srcp[1] << 1) + srcp[2] + 2) >> 2;
-    dstp[2] = (srcp[1] + (srcp[2] << 1) + srcp[3] + 2) >> 2;
-    dstp[3] = (srcp[2] + (srcp[3] << 1) + srcp[4] + 2) >> 2;
-    // 4-7
-    for (int x = 4; x < 8; ++x)
-      dstp[x] = (srcp[x - 1] + (srcp[x] << 1) + srcp[x + 1] + 2) >> 2;
-    for (int x = width - 8; x < width - 4; ++x)
-      dstp[x] = (srcp[x - 1] + (srcp[x] << 1) + srcp[x + 1] + 2) >> 2;
-    // -8..-5
-    dstp[width - 4] = (srcp[width - 5] + (srcp[width - 4] << 1) + srcp[width - 3] + 2) >> 2;
-    dstp[width - 3] = (srcp[width - 4] + (srcp[width - 3] << 1) + srcp[width - 2] + 2) >> 2;
-    dstp[width - 2] = (srcp[width - 3] + (srcp[width - 2] << 1) + srcp[width - 1] + 2) >> 2;
-    dstp[width - 1] = (srcp[width - 2] + srcp[width - 1] + 1) >> 1;
-    srcp += src_pitch;
-    dstp += dst_pitch;
-  }
-}
 
 //void HorizontalBlur_YUY2_lumaonly_SSE2(const uint8_t *srcp, uint8_t *dstp, int src_pitch,
 //  int dst_pitch, int width, int height)

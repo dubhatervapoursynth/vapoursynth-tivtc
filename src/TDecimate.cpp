@@ -1104,8 +1104,8 @@ void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, Calc
   {
     prev = vsapi->newVideoFrame(d.vi.format, d.vi.width, d.vi.height, nullptr, core);
     curr = vsapi->newVideoFrame(d.vi.format, d.vi.width, d.vi.height, nullptr, core);
-    blurFrame(prevt, prev, 2, d.chroma, d.cpuFlags, core, vsapi);
-    blurFrame(currt, curr, 2, d.chroma, d.cpuFlags, core, vsapi);
+    blurFrame(prevt, prev, 2, d.chroma, core, vsapi);
+    blurFrame(currt, curr, 2, d.chroma, core, vsapi);
   }
   else
   {
@@ -1123,7 +1123,6 @@ void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, Calc
   int yblocks = ((d.vi.height + d.blocky_half) >> d.blocky_shift) + 1;
   int arraysize = (xblocks * yblocks) << 2;
 
-  const bool use_sse2 = d.cpuFlags->sse2;
 
   memset(d.diff, 0, arraysize * sizeof(uint64_t));
 
@@ -1144,27 +1143,7 @@ void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, Calc
     // sum is gathered in uint64_t diff
     // diff[] entries are normalized back to 8 bit
 
-    if (pixelsize == 1 && d.blockx == 32 && d.blocky == 32 && d.nt <= 0)
     {
-      if (d.ssd && use_sse2)
-        calcDiffSSD_32x32_SSE2(prvp, curp, prv_pitch, cur_pitch, width, height, plane, xblocks4, d.diff, d.chroma, &d.vi);
-      else if (!d.ssd && use_sse2)
-        calcDiffSAD_32x32_SSE2(prvp, curp, prv_pitch, cur_pitch, width, height, plane, xblocks4, d.diff, d.chroma, &d.vi);
-      else { goto use_c; }
-    }
-    else if (pixelsize == 1 && d.blockx >= 16 && d.blocky >= 16 && d.nt <= 0)
-    {
-      // YUY2 block size 8 is really 16 in width because luma + chroma
-      if (d.ssd && use_sse2)
-        calcDiffSSD_Generic_SSE2(prvp, curp, prv_pitch, cur_pitch, width, height, plane, xblocks4, d.diff, d.chroma, d.blockx_shift, d.blocky_shift, d.blockx_half, d.blocky_half, &d.vi);
-      else if (!d.ssd && use_sse2)
-        calcDiffSAD_Generic_SSE2(prvp, curp, prv_pitch, cur_pitch, width, height, plane, xblocks4, d.diff, d.chroma, d.blockx_shift, d.blocky_shift, d.blockx_half, d.blocky_half, &d.vi);
-      else { goto use_c; }
-    }
-    else
-    {
-      // fixme: have calcDiffSSD uint16_t to SIMD.
-    use_c:
       if (pixelsize == 1) {
         if (!d.ssd) {
           // SAD
@@ -1221,7 +1200,6 @@ uint64_t TDecimate::calcMetric(const VSFrameRef *prevt, const VSFrameRef *currt,
   d.predenoise = predenoise;
   d.vi = *vit;
   d.chroma = chroma;
-  d.cpuFlags = &cpuFlags;
   d.blockx = blockx;
   d.blockx_half = blockx_half;
   d.blockx_shift = blockx_shift;
@@ -1341,9 +1319,9 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
       if (next_numd == w - 1) 
         copyFrame(prv, nxt, vsapi);
       else 
-        blurFrame(prevt, prv, 2, chroma, &cpuFlags, core, vsapi);
+        blurFrame(prevt, prv, 2, chroma, core, vsapi);
       
-      blurFrame(nextt, nxt, 2, chroma, &cpuFlags, core, vsapi);
+      blurFrame(nextt, nxt, 2, chroma, core, vsapi);
       next_numd = w;
     }
     else
@@ -1404,7 +1382,6 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
     d.predenoise = false; // done earlier
     d.vi = *vi_child;
     d.chroma = chroma;
-    d.cpuFlags = &cpuFlags;
     d.blockx = blockx;
     d.blockx_half = blockx_half;
     d.blockx_shift = blockx_shift;
@@ -2442,7 +2419,7 @@ void TDecimate::blendFrames(const VSFrameRef *src1, const VSFrameRef *src2, VSFr
     dstp = vsapi->getWritePtr(dst, plane);
     dst_pitch = vsapi->getStride(dst, plane);
 
-    dispatch_blend(dstp, srcp1, srcp2, width, height, dst_pitch, s1_pitch, s2_pitch, weight_i, bits_per_pixel, &cpuFlags);
+    dispatch_blend(dstp, srcp1, srcp2, width, height, dst_pitch, s1_pitch, s2_pitch, weight_i, bits_per_pixel);
   }
 }
 
@@ -2916,8 +2893,6 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
   
   fps = (double)vi.fpsNum / (double)vi.fpsDen;
 
-  cpuFlags = *getCPUFeatures();
-  if (opt == 0) memset(&cpuFlags, 0, sizeof(cpuFlags));
 
   if (!vi.format)
       throw TIVTCError("TDecimate: the clip must have constant format.");

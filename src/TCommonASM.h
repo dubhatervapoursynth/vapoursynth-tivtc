@@ -24,11 +24,8 @@
 
 #include <stdint.h>
 #include "internal.h"
-#include <xmmintrin.h>
-#include <emmintrin.h>
 #include <algorithm>
 #include <VSHelper.h>
-#include "cpufeatures.h"
 
 template<int bits_per_pixel>
 AVS_FORCEINLINE int cubicInt(int p1, int p2, int p3, int p4)
@@ -38,9 +35,6 @@ AVS_FORCEINLINE int cubicInt(int p1, int p2, int p3, int p4)
   return std::min(std::max(temp, 0), max_pixel_value);
 }
 
-void absDiff_SSE2(const uint8_t* srcp1, const uint8_t* srcp2,
-  uint8_t* dstp, int src1_pitch, int src2_pitch, int dst_pitch, int width,
-  int height, int mthresh1, int mthresh2);
 
 void absDiff_c(const uint8_t* srcp1, const uint8_t* srcp2,
   uint8_t* dstp, int src1_pitch, int src2_pitch, int dst_pitch, int width,
@@ -57,23 +51,10 @@ void check_combing_c(const pixel_t* srcp, uint8_t* dstp, int width, int height, 
 template<typename pixel_t, typename safeint_t>
 void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* dstp, int width, int height, int src_pitch, int dst_pitch, safeint_t cthreshsq);
 
-void check_combing_SSE2(const uint8_t *srcp, uint8_t *dstp,
-  int width, int height, int src_pitch, int dst_pitch, int cthresh);
 
-#if defined(GCC) || defined(CLANG)
-__attribute__((__target__("sse4.1")))
-#endif 
-void check_combing_uint16_SSE4(const uint16_t* srcp, uint8_t* dstp, int width, int height, int src_pitch, int dst_pitch, int cthresh);
 
-void check_combing_SSE2_Metric1(const uint8_t *srcp, uint8_t *dstp,
-  int width, int height, int src_pitch, int dst_pitch, int cthreshsq);
   
-void check_combing_SSE2_Luma_Metric1(const uint8_t *srcp, uint8_t *dstp,
-  int width, int height, int src_pitch, int dst_pitch, int cthreshsq);
 
-template<typename pixel_t>
-void buildABSDiffMask_SSE2(const uint8_t *prvp, const uint8_t *nxtp,
-  uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height);
 
 template<typename pixel_t>
 void buildABSDiffMask_c(const uint8_t* prvp, const uint8_t* nxtp,
@@ -81,18 +62,14 @@ void buildABSDiffMask_c(const uint8_t* prvp, const uint8_t* nxtp,
 
 template<typename pixel_t>
 void do_buildABSDiffMask(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* tbuffer,
-  int prv_pitch, int nxt_pitch, int tpitch, int width, int height, const CPUFeatures *cpuFlags);
+  int prv_pitch, int nxt_pitch, int tpitch, int width, int height);
 
 template<typename pixel_t, int bits_per_pixel>
 void AnalyzeDiffMask_Planar(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer, int tpitch, int Width, int Height);
 void AnalyzeDiffMask_YUY2(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer, int tpitch, int Width, int Height, bool mChroma);
 
 
-void buildABSDiffMask2_uint8_SSE2(const uint8_t *prvp, const uint8_t *nxtp,
-  uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height);
 
-void buildABSDiffMask2_uint16_SSE2(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel);
 
 template<typename pixel_t>
 void buildABSDiffMask2_c(const uint8_t* prvp, const uint8_t* nxtp,
@@ -100,19 +77,14 @@ void buildABSDiffMask2_c(const uint8_t* prvp, const uint8_t* nxtp,
 
 template<typename pixel_t>
 void do_buildABSDiffMask2(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dstp,
-  int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, const CPUFeatures *cpuFlags, int bits_per_pixel);
+  int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel);
 
 
-template<int blockSizeY>
-void compute_sum_8xN_sse2(const uint8_t *srcp, int pitch, int &sum);
 
-void compute_sum_16x8_sse2_luma(const uint8_t *srcp, int pitch, int &sum);
 
 // fixme: put non-asm utility functions into different file
 void copyFrame(VSFrameRef *dst, const VSFrameRef *src, const VSAPI *vsapi);
 
-template<typename pixel_t>
-void blend_5050_SSE2(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, int dst_pitch, int src1_pitch, int src2_pitch);
 template<typename pixel_t>
 void blend_5050_c(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, int dst_pitch, int src1_pitch, int src2_pitch);
 

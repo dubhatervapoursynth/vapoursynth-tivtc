@@ -51,7 +51,6 @@
 #include "calcCRC.h"
 //#include "profUtil.h"
 //#include "Cache.h"
-#include "cpufeatures.h"
 
 enum {
     RetFrameIsReady = 69,
@@ -64,7 +63,6 @@ struct CalcMetricData {
   bool predenoise;
   VSVideoInfo vi;
   bool chroma;
-  const CPUFeatures *cpuFlags;
   int blockx;
   int blockx_half;
   int blockx_shift;
@@ -84,13 +82,7 @@ struct CalcMetricData {
 void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, CalcMetricData& d, VSCore *core, const VSAPI *vsapi);
 
 void blurFrame(const VSFrameRef *src, VSFrameRef *dst, int iterations,
-  bool bchroma, const CPUFeatures *cpuFlags, VSCore *core, const VSAPI *vsapi);
-
-uint64_t calcLumaDiffYUY2_SSD(const uint8_t* prvp, const uint8_t* nxtp,
-  int width, int height, int prv_pitch, int nxt_pitch, int nt, int cpuFlags);
-
-uint64_t calcLumaDiffYUY2_SAD(const uint8_t* prvp, const uint8_t* nxtp,
-  int width, int height, int prv_pitch, int nxt_pitch, int nt, int cpuFlags);
+  bool bchroma, VSCore *core, const VSAPI *vsapi);
 
 class TDecimate
 {
@@ -100,7 +92,6 @@ private:
     const VSVideoInfo *vi_child;
     const VSVideoInfo *vi_clip2;
 
-  CPUFeatures cpuFlags;
 
   int mode;
   int cycleR, cycle;
