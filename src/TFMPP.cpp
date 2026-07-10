@@ -37,7 +37,12 @@ const VSFrameRef *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *f
   else if (n > nfrms) n = nfrms;
 
   if (activationReason == arInitial) {
-      if (PP > 4)
+      // Use frame n's effective (post-override) PP, not the member PP -- which may still
+      // hold a different frame's value at this point. arAllFramesReady fetches n-1/n+1 when
+      // PP>4, so they must be requested here under the same condition or getFrameFilter
+      // returns NULL and getProperties() dereferences it.
+      const int ppN = getEffectivePP(n);
+      if (ppN > 4)
           vsapi->requestFrameFilter(std::max(0, n - 1), child, frameCtx);
 
       if (uC2)
@@ -45,7 +50,7 @@ const VSFrameRef *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *f
 
       vsapi->requestFrameFilter(n, child, frameCtx);
 
-      if (PP > 4)
+      if (ppN > 4)
           vsapi->requestFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
 
       return nullptr;
@@ -1097,6 +1102,20 @@ void TFMPP::getSetOvr(int n)
       else if (setArray[x] == 77) mthresh = setArray[x + 3]; // M
     }
   }
+}
+
+// Effective PP for frame n: base PP with any matching 'P' override from the ovr file
+// applied, WITHOUT mutating member state. Used by arInitial so the frames it requests
+// match what arAllFramesReady (via getSetOvr) will actually consume for frame n.
+int TFMPP::getEffectivePP(int n) const
+{
+  int pp = PP_origSaved;
+  for (int x = 0; x < (int)setArray.size(); x += 4)
+  {
+    if (n >= setArray[x + 1] && n <= setArray[x + 2] && setArray[x] == 80) // P override
+      pp = setArray[x + 3];
+  }
+  return pp;
 }
 
 void TFMPP::copyField(VSFrameRef *dst, const VSFrameRef *src, int field) const

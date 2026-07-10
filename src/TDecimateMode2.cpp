@@ -265,7 +265,7 @@ void TDecimate::removeMinN(int m, int n, int start, int stop)
       mode2_order[i] = i;
       mode2_metrics[i] = metricsOutArray[(x + i) << 1];
     }
-    sortMetrics(mode2_metrics.data(), mode2_order.data(), n);
+    sortMetrics(mode2_metrics.data(), mode2_order.data(), stop2);
     for (int i = 0; i < stop2 && dec < m; ++i)
     {
       if (mode2_decA[x + mode2_order[i]] != 1)
@@ -460,7 +460,7 @@ double TDecimate::buildDecStrategy()
   {
     mode2_den = (int)frRatio;
     mode2_num = findNumerator(decRatio, mode2_den);
-    if (maxndl > 0 && maxndl < 99 && mode2_num - mode2_den < maxndl) mode2_den = mode2_num + maxndl;
+    if (maxndl > 0 && maxndl < 99 && mode2_den - mode2_num < maxndl) mode2_den = mode2_num + maxndl;
   }
   if (mode2_den <= 0 || mode2_num <= 0 || mode2_num > 100 || mode2_den > 100 || mode2_num >= mode2_den)
       throw TIVTCError("TDecimate:  mode 2 invalid num and den results!");
@@ -496,7 +496,10 @@ double TDecimate::buildDecStrategy()
   if (aLUT.size()) aLUT.resize(0);
   if (allMetrics)
   {
-    aLUT.resize((int)(vi.numFrames*rate / fps), 0);
+    // Size must match the output frame count, which is derived from aRate (not the
+    // requested rate) at TDecimate.cpp: vi.numFrames = numFrames * (arate / fps).
+    // aRate >= rate, so sizing by rate under-allocates and aLUT[n] over-reads.
+    aLUT.resize((int)(vi.numFrames * (aRate / fps)), 0);
 
     std::vector<int> orderT(vi.numFrames, 0);
     std::vector<uint64_t> metricsT(vi.numFrames, 0);

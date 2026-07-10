@@ -107,6 +107,7 @@ private:
 //  bool getHint_core(const VSFrameRef *src, int& field, bool& combed, unsigned int& hint);
 
   void getSetOvr(int n);
+  int getEffectivePP(int n) const; // effective PP for frame n (base + P overrides), no side effects
 
 //  void denoiseYUY2(VSFrameRef *mask);
   void denoisePlanar(VSFrameRef *mask) const;

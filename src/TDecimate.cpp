@@ -549,13 +549,6 @@ void setBlack(VSFrameRef *dst, const VSAPI *vsapi)
 
 const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
-  static int vidC = 0;
-  static int filmC = 0;
-  static int longestT = 0;
-  static int longestV = 0;
-  static int countVT = 0;
-  static double timestamp = 0.0;
-
   if (activationReason != arInitial && activationReason != arAllFramesReady)
       return nullptr;
 
@@ -607,8 +600,8 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
 
   if (n == 0)
   {
-    vidC = filmC = longestT = longestV = countVT = 0;
-    timestamp = 0.0;
+    m3stats.vidC = m3stats.filmC = m3stats.longestT = m3stats.longestV = m3stats.countVT = 0;
+    m3stats.timestamp = 0.0;
   }
   if (linearCount != n) {
       vsapi->setFilterError("TDecimate:  non-linear access detected in mode 3!", frameCtx);
@@ -664,15 +657,15 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
       (vidDetect == 2 && (isVid2 || isVid)) || (vidDetect == 3 && (isVid2 && isVid)))
     {
       retFrames = cycle;
-      vidC += (curr.frame + cycle <= nfrms ? cycle : nfrms - curr.frame + 1);
-      longestT += (curr.frame + cycle <= nfrms ? cycle : nfrms - curr.frame + 1);
+      m3stats.vidC += (curr.frame + cycle <= nfrms ? cycle : nfrms - curr.frame + 1);
+      m3stats.longestT += (curr.frame + cycle <= nfrms ? cycle : nfrms - curr.frame + 1);
       if (!tcfv1)
       {
         int stop = (lastCycle + cycle <= nfrms ? cycle : nfrms - lastCycle + 1);
         for (int u = 0; u < stop; ++u)
         {
-          fprintf(mkvOutF, "%3.6f\n", timestamp);
-          timestamp += 1000.0 / fps;
+          fprintf(mkvOutF, "%3.6f\n", m3stats.timestamp);
+          m3stats.timestamp += 1000.0 / fps;
         }
       }
     }
@@ -689,12 +682,12 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
         next.setDups(dupThresh);
         findDupStrings(prev, curr, next);
       }
-      filmC += (curr.frame + cycle <= nfrms ? cycle : nfrms - curr.frame + 1);
+      m3stats.filmC += (curr.frame + cycle <= nfrms ? cycle : nfrms - curr.frame + 1);
       if (retFrames == cycle)
       {
-        if (longestT > longestV) longestV = longestT;
-        ++countVT;
-        longestT = 0;
+        if (m3stats.longestT > m3stats.longestV) m3stats.longestV = m3stats.longestT;
+        ++m3stats.countVT;
+        m3stats.longestT = 0;
       }
       if (curr.blend != 3)
       {
@@ -703,8 +696,8 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
           int stop = (lastCycle + cycle <= nfrms ? cycle - cycleR : nfrms - lastCycle + 1 - cycleR);
           for (int u = 0; u < stop; ++u)
           {
-            fprintf(mkvOutF, "%3.6f\n", timestamp);
-            timestamp += 1000.0 / mkvfps;
+            fprintf(mkvOutF, "%3.6f\n", m3stats.timestamp);
+            m3stats.timestamp += 1000.0 / mkvfps;
           }
         }
         retFrames = cycle - cycleR;
@@ -718,8 +711,8 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
           int stop = (lastCycle + cycle <= nfrms ? cycle - cycleR - 1 : nfrms - lastCycle + 1 - cycleR - 1);
           for (int u = 0; u < stop; ++u)
           {
-            fprintf(mkvOutF, "%3.6f\n", timestamp);
-            timestamp += 1000.0 / mkvfps2;
+            fprintf(mkvOutF, "%3.6f\n", m3stats.timestamp);
+            m3stats.timestamp += 1000.0 / mkvfps2;
           }
         }
         else fprintf(mkvOutF, "%d,%d,%4.6f\n", lastGroup, lastGroup + cycle - cycleR - 2, mkvfps2);
@@ -792,12 +785,12 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
 
   if (retFrames == -1 && mkvOutF != nullptr)
   {
-    double filmCf = ((double)(filmC) / (double)(nfrms + 1))*100.0;
-    double videoCf = ((double)(vidC) / (double)(nfrms + 1))*100.0;
+    double filmCf = ((double)(m3stats.filmC) / (double)(nfrms + 1))*100.0;
+    double videoCf = ((double)(m3stats.vidC) / (double)(nfrms + 1))*100.0;
     fprintf(mkvOutF, "# vfr stats:  %05.2f%c film  %05.2f%c video\n", filmCf, '%', videoCf, '%');
-    fprintf(mkvOutF, "# vfr stats:  %d - film  %d - video  %d - total\n", filmC, vidC, nfrms + 1);
-    fprintf(mkvOutF, "# vfr stats:  longest vid section - %d frames\n", longestV);
-    fprintf(mkvOutF, "# vfr stats:  # of detected vid sections - %d", countVT);
+    fprintf(mkvOutF, "# vfr stats:  %d - film  %d - video  %d - total\n", m3stats.filmC, m3stats.vidC, nfrms + 1);
+    fprintf(mkvOutF, "# vfr stats:  longest vid section - %d frames\n", m3stats.longestV);
+    fprintf(mkvOutF, "# vfr stats:  # of detected vid sections - %d", m3stats.countVT);
     fclose(mkvOutF);
     mkvOutF = nullptr;
   }
@@ -2935,6 +2928,8 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
     throw TIVTCError("TDecimate:  an mkvOut file must be specified in mode 5!");
   if (mode == 6 && mkvOut.empty())
     throw TIVTCError("TDecimate:  an mkvOut file must be specified in mode 6!");
+  if (mode == 6 && input.empty())
+    throw TIVTCError("TDecimate:  mode 6 requires an input file containing precalculated metrics!");
   if (hybrid < 0 || hybrid > 3)
     throw TIVTCError("TDecimate:  hybrid must be set to 0, 1, 2, or 3!");
   if (mode == 3 && hybrid != 2)
@@ -3088,7 +3083,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
       if (ssd) 
         MAX_DIFF = (uint64_t)(sqrt(219.0*219.0*blockx*blocky + 224.0*224.0* blockx_chroma * blocky_chroma *2.0));
       else 
-        MAX_DIFF = (uint64_t)(219.0*blockx*blocky + 224.0*blockx_half*blocky_half*2.0);
+        MAX_DIFF = (uint64_t)(219.0*blockx*blocky + 224.0*blockx_chroma*blocky_chroma*2.0);
     }
     else
     {

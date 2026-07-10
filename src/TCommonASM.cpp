@@ -235,7 +235,7 @@ void do_buildABSDiffMask2(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dst
   if (cpuFlags->sse2 && width >= 8) // yes, width and not row_size
   {
     int mod8Width = width / 8 * 8;
-    if constexpr(sizeof(pixel_t) == 8)
+    if constexpr(sizeof(pixel_t) == 1)
       buildABSDiffMask2_uint8_SSE2(prvp, nxtp, dstp, prv_pitch, nxt_pitch, dst_pitch, mod8Width, height);
     else
       buildABSDiffMask2_uint16_SSE2(prvp, nxtp, dstp, prv_pitch, nxt_pitch, dst_pitch, mod8Width, height, bits_per_pixel);
@@ -599,8 +599,10 @@ void buildABSDiffMask2_uint16_SSE2(const uint8_t* prvp, const uint8_t* nxtp,
         auto cmp3_hi = _MM_CMPLE_EPU16(Compare3plus1, diff_hi); // FFFF where 4 <= diff (3 < diff)
 
         // make bytes from wordBools
-        auto cmp251 = _mm_packus_epi16(cmp3_lo, cmp3_hi);
-        auto cmp235 = _mm_packus_epi16(cmp19_lo, cmp19_hi);
+        // NOTE: _mm_packs_epi16 (signed) turns 0xFFFF (compare-true, = -1) into byte 0xFF;
+        // _mm_packus_epi16 would unsigned-saturate -1 to 0x00 and zero the whole mask.
+        auto cmp251 = _mm_packs_epi16(cmp3_lo, cmp3_hi);
+        auto cmp235 = _mm_packs_epi16(cmp19_lo, cmp19_hi);
 
         // target is byte buffer!
         auto tmp1 = _mm_and_si128(cmp251, onesMask);
@@ -638,8 +640,8 @@ void buildABSDiffMask2_uint16_SSE2(const uint8_t* prvp, const uint8_t* nxtp,
         auto cmp3_hi = _MM_CMPLE_EPU16(Compare3plus1, diff_hi); // FFFF where 4 <= diff (3 < diff)
 
         // make bytes from wordBools
-        auto cmp251 = _mm_packus_epi16(cmp3_lo, cmp3_hi);
-        auto cmp235 = _mm_packus_epi16(cmp19_lo, cmp19_hi);
+        auto cmp251 = _mm_packs_epi16(cmp3_lo, cmp3_hi);
+        auto cmp235 = _mm_packs_epi16(cmp19_lo, cmp19_hi);
 
         // target is byte buffer!
         auto tmp1 = _mm_and_si128(cmp251, onesMask);
@@ -658,8 +660,8 @@ void buildABSDiffMask2_uint16_SSE2(const uint8_t* prvp, const uint8_t* nxtp,
       auto cmp3_lo = _MM_CMPLE_EPU16(Compare3plus1, diff_lo); // FFFF where 4 <= diff (3 < diff)
 
       // make bytes from wordBools
-      auto cmp251 = _mm_packus_epi16(cmp3_lo, cmp3_lo); // 8 bytes valid only
-      auto cmp235 = _mm_packus_epi16(cmp19_lo, cmp19_lo);
+      auto cmp251 = _mm_packs_epi16(cmp3_lo, cmp3_lo); // 8 bytes valid only
+      auto cmp235 = _mm_packs_epi16(cmp19_lo, cmp19_lo);
 
       // target is byte buffer!
       auto tmp1 = _mm_and_si128(cmp251, onesMask);

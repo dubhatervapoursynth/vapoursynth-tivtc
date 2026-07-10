@@ -36,9 +36,9 @@ const VSFrameRef * TDecimate::GetFrameMode7(int n, int activationReason, void **
   int prev_f = int(double(n - 1)*ratio + 1.0);
   if (prev_f < 0) prev_f = 0;
   int curr1_f = int(double(n)*ratio);
-  if (curr1_f > nfrms) mode2_decA[n] = nfrms;
+  if (curr1_f > nfrms) curr1_f = nfrms;
   int curr2_f = int(double(n)*ratio + 1.0);
-  if (curr2_f > nfrms) mode2_decA[n] = nfrms;
+  if (curr2_f > nfrms) curr2_f = nfrms;
   int next_f = int(double(n + 1)*ratio);
   if (next_f > nfrms) next_f = nfrms;
   int curr_real = mode2_decA[n];

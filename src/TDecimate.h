@@ -140,6 +140,9 @@ private:
   int blocky_shift, blockx_shift, blockx_half, blocky_half;
   int lastn;
   int lastFrame, lastCycle, lastGroup, lastType, retFrames;
+  // mode 3 vfr-stats accumulators. These were function-local statics in GetFrameMode3,
+  // so two TDecimate(mode=3) instances in one graph clobbered each other's state. Per-instance now.
+  struct { int vidC = 0, filmC = 0, longestT = 0, longestV = 0, countVT = 0; double timestamp = 0.0; } m3stats;
   uint64_t MAX_DIFF, sceneThreshU, sceneDivU, diff_thresh, same_thresh;
   double fps, mkvfps, mkvfps2;
   bool useTFMPP, cve, ecf, fullInfo;
