@@ -2773,6 +2773,9 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
       throw TIVTCError("TFM: only integer formats supported!");
   if (vi->format->colorFamily != cmYUV)
     throw TIVTCError("TFM:  YUV data only!");
+  if (vi->format->subSamplingW > 1 || vi->format->subSamplingH > 1 ||
+    vi->format->subSamplingH > vi->format->subSamplingW)
+    throw TIVTCError("TFM:  only 4:4:4, 4:2:2 and 4:2:0 subsampling is supported!");
   if (vi->height & 1 || vi->width & 1)
     throw TIVTCError("TFM:  height and width must be divisible by 2!");
   if (vi->height < 6 || vi->width < 64)
@@ -3076,11 +3079,19 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
       {
         if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == ';' || linein[0] == '#')
           continue;
+        // Classify by the specifier (first non-space char after the leading frame number / range):
+        // f/m/o/P/i are per-frame settings lines (written into setArray by pass 2); everything else
+        // is a match/combed line. Keying on the specifier -- rather than scanning the whole line for
+        // '-'/'+' -- is essential: a settings value can legitimately be negative (e.g. "100 f -1"),
+        // and the '-' would otherwise misclassify it as a match line, leaving setArray undersized
+        // and causing pass 2 to write out of bounds.
         linep = linein;
-        while (*linep != 'c' && *linep != 'p' && *linep != 'n' && *linep != 'b' &&
-          *linep != 'u' && *linep != 'l' && *linep != 'h' && *linep != '+' && *linep != '-' && *linep != 0) linep++;
-        if (*linep == 0) ++countOvrS;
-        else ++countOvrM;
+        while (*linep != ' ' && *linep != 0) linep++;
+        const char specifier = (*linep == ' ') ? *(linep + 1) : 0;
+        if (specifier == 'f' || specifier == 'm' || specifier == 'o' || specifier == 'P' || specifier == 'i')
+          ++countOvrS;
+        else
+          ++countOvrM;
       }
       if (ovrDefault != 0 && ovrArray.size())
       {
@@ -3539,7 +3550,7 @@ TFM::~TFM()
     {
       if ((f = tivtc_fopen(outputFull, "w")) != nullptr)
       {
-        char tempBuf[40], tb2[40];
+        char tempBuf[256], tb2[256];
         int match, sn = micout == 1 ? 3 : 5;
         if (moutArrayE.size())
         {

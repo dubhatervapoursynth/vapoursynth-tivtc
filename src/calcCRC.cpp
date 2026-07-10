@@ -106,6 +106,7 @@ void calcCRC(VSNodeRef *hclip, int stop, unsigned int &crc, const VSAPI *vsapi)
   for (x = 0; x < stop; ++x)
   {
     src = vsapi->getFrame(x, hclip, nullptr, 0);
+    if (src == nullptr) break; // upstream render failure: abort CRC (caller will report a mismatch)
     buffer = vsapi->getReadPtr(src, 0);
     width = vsapi->getFrameWidth(src, 0) * vsapi->getFrameFormat(src)->bytesPerSample;
     pitch = vsapi->getStride(src, 0);

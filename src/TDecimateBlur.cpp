@@ -67,7 +67,7 @@ void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
     uint8_t *dstp = vsapi->getWritePtr(dst, plane);
     int dst_pitch = vsapi->getStride(dst, plane);
 
-      if (pixelsize == 1 && use_sse2 && width >= 8)
+      if (pixelsize == 1 && use_sse2 && widtha >= 16) // kernel needs a full 8px left + 8px right block
       {
         // always mod 8, sse2 unaligned!
         HorizontalBlur_Planar_SSE2(srcp, dstp, src_pitch, dst_pitch, widtha, height);

@@ -1300,7 +1300,10 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
             if (frameCtx)
                 nextt = vsapi->getFrameFilter(w, child, frameCtx);
             else
+            {
                 nextt = vsapi->getFrame(w, child, nullptr, 0);
+                if (nextt == nullptr) throw TIVTCError("TDecimate:  failed to fetch a source frame during metric calculation!");
+            }
             next_num = w;
             current.match[i] = getTFMFrameProperties(nextt, current.filmd2v[i]);
           }
@@ -1315,14 +1318,20 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
           if (frameCtx)
             prevt = vsapi->getFrameFilter(w > 0 ? w - 1 : 0, child, frameCtx);
           else
+          {
             prevt = vsapi->getFrame(w > 0 ? w - 1 : 0, child, nullptr, 0);
+            if (prevt == nullptr) throw TIVTCError("TDecimate:  failed to fetch a source frame during metric calculation!");
+          }
       }
 
       vsapi->freeFrame(nextt);
       if (frameCtx)
         nextt = vsapi->getFrameFilter(w, child, frameCtx);
       else
+      {
         nextt = vsapi->getFrame(w, child, nullptr, 0);
+        if (nextt == nullptr) throw TIVTCError("TDecimate:  failed to fetch a source frame during metric calculation!");
+      }
       next_num = w;
       if (current.match[i] == -20 && hnt)
       {
@@ -2920,6 +2929,9 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
     throw TIVTCError("TDecimate:  only 8-16 bit formats supported!");
   if (vi.format->colorFamily != cmYUV)
     throw TIVTCError("TDecimate:  YUV colorspaces only!");
+  if (vi.format->subSamplingW > 1 || vi.format->subSamplingH > 1 ||
+    vi.format->subSamplingH > vi.format->subSamplingW)
+    throw TIVTCError("TDecimate:  only 4:4:4, 4:2:2 and 4:2:0 subsampling is supported!");
   if (mode < 0 || mode > 7)
     throw TIVTCError("TDecimate:  mode must be set to 0, 1, 2, 3, 4, 5, 6, or 7!");
   if (mode == 3 && mkvOut.empty())

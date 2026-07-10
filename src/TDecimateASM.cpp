@@ -1081,10 +1081,6 @@ static void calcDiff_SADorSSD_32x32_SSE2(const uint8_t* ptr1, const uint8_t* ptr
         SAD_fn = calcSAD_SSE2_8xN<16>;
       else if (xsubsampling == 1 && ysubsampling == 1) // YV12
         SAD_fn = calcSAD_SSE2_8xN<8>;
-      else if (xsubsampling == 2 && ysubsampling == 0) // YV411
-        SAD_fn = calcSAD_SSE2_4xN<16>;
-      else if (xsubsampling == 2 && ysubsampling == 2) // YUV410
-        SAD_fn = calcSAD_SSE2_4xN<4>;
     }
     else {
       if (xsubsampling == 0 && ysubsampling == 0) // YV24 or luma
@@ -1093,10 +1089,6 @@ static void calcDiff_SADorSSD_32x32_SSE2(const uint8_t* ptr1, const uint8_t* ptr
         SAD_fn = calcSSD_SSE2_8xN<16>;
       else if (xsubsampling == 1 && ysubsampling == 1) // YV12
         SAD_fn = calcSSD_SSE2_8xN<8>;
-      else if (xsubsampling == 2 && ysubsampling == 0) // YV411
-        SAD_fn = calcSSD_SSE2_4xN<16>;
-      else if (xsubsampling == 2 && ysubsampling == 2) // YUV410
-        SAD_fn = calcSSD_SSE2_4xN<4>;
     }
     // other formats are forbidden and were pre-checked
 
@@ -1218,10 +1210,6 @@ void calcDiff_SADorSSD_Generic_SSE2(const uint8_t* ptr1, const uint8_t* ptr2,
         SAD_fn = calcSAD_SSE2_4xN<8>;
       else if (xsubsampling == 1 && ysubsampling == 1) // YV12
         SAD_fn = calcSAD_SSE2_4xN<4>;
-      else if (xsubsampling == 2 && ysubsampling == 0) // YV411
-        SAD_fn = calcSAD_C_2xN<8>;
-      else if (xsubsampling == 2 && ysubsampling == 2) // YUV410
-        SAD_fn = calcSAD_C_2xN<2>;
     }
     else {
       if (xsubsampling == 0 && ysubsampling == 0) // YV24 or luma
@@ -1230,10 +1218,6 @@ void calcDiff_SADorSSD_Generic_SSE2(const uint8_t* ptr1, const uint8_t* ptr2,
         SAD_fn = calcSSD_SSE2_4xN<8>;
       else if (xsubsampling == 1 && ysubsampling == 1) // YV12
         SAD_fn = calcSSD_SSE2_4xN<4>;
-      else if (xsubsampling == 2 && ysubsampling == 0) // YV411
-        SAD_fn = calcSSD_C_2xN<8>;
-      else if (xsubsampling == 2 && ysubsampling == 2) // YUV410
-        SAD_fn = calcSSD_C_2xN<2>;
     }
     // other formats are forbidden and were pre-checked
 

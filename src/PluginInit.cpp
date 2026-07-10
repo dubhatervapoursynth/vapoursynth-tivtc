@@ -592,7 +592,7 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, void *userData, V
         fmParallelRequests,
         fmUnordered, // Either fmUnordered or fmParallelRequests. I figured out which one but I didn't write it down and forgot.
         fmSerial,
-        fmParallel,
+        fmParallelRequests, // mode 4: serialized production - calcMetric() shares the member `diff` scratch buffer
         fmParallel,
         fmParallel,
         fmUnordered
