@@ -3,8 +3,8 @@
 **
 **   TIVTC includes a field matching filter (TFM) and a decimation
 **   filter (TDecimate) which can be used together to achieve an
-**   IVTC or for other uses. TIVTC currently supports 8 bit planar YUV and
-**   YUY2 colorspaces.
+**   IVTC or for other uses. TIVTC supports 8-16 bit planar YUV
+**   (4:4:4, 4:2:2 and 4:2:0).
 **
 **   Copyright (C) 2004-2008 Kevin Stone, additional work (C) 2020 pinterf
 **
@@ -838,7 +838,7 @@ int TFM::compareFields_core(const VSFrameRef *prv, const VSFrameRef *src, const 
   int y0a, y1a; // exclusion regio
 
   const int stop = vi->format->numPlanes == 1 || !mChroma ? 1 : 3;
-  const int incl = 1;  // pixel increments: 2 if YUY2 with no-chroma option otherwise 1
+  const int incl = 1;  // pixel increment (1 for planar)
 
   uint64_t accumPc = 0, accumNc = 0;
   uint64_t accumPm = 0, accumNm = 0;
@@ -1090,7 +1090,7 @@ int TFM::compareFieldsSlow_core(const VSFrameRef *prv, const VSFrameRef *src, co
   int tpitch_current;
 
   const int stop = vi->format->numPlanes == 1 || !mChroma ? 1 : 3;
-  const int incl = 1;  // pixel increments: 2 if YUY2 with no-chroma option otherwise 1
+  const int incl = 1;  // pixel increment (1 for planar)
 
   uint64_t accumPc = 0, accumNc = 0;
   uint64_t accumPm = 0, accumNm = 0;
@@ -1350,7 +1350,7 @@ int TFM::compareFieldsSlow2_core(const VSFrameRef *prv, const VSFrameRef *src, c
   int tpitch_current;
 
   const int stop = vi->format->numPlanes == 1 || !mChroma ? 1 : 3;
-  int incl = 1;  // pixel increments: 2 if YUY2 with no-chroma option otherwise 1
+  int incl = 1;  // pixel increment (1 for planar)
 
   uint64_t accumPc = 0, accumNc = 0;
   uint64_t accumPm = 0, accumNm = 0;
@@ -1756,25 +1756,6 @@ static void checkSceneChangePlanar_1_c(const pixel_t* srcp, const pixel_t* nxtp,
   }
 }
 
-//void checkSceneChangeYUY2_1_c(const uint8_t* srcp, const uint8_t* nxtp,
-//int height, int width, int src_pitch, int nxt_pitch, uint64_t& diff)
-//{
-//  for (int y = 0; y < height; ++y)
-//  {
-//    uint32_t rowdiff = 0;
-//    for (int x = 0; x < width; x += 8)
-//    {
-//      rowdiff += abs(srcp[x + 0] - nxtp[x + 0]);
-//      rowdiff += abs(srcp[x + 2] - nxtp[x + 2]);
-//      rowdiff += abs(srcp[x + 4] - nxtp[x + 4]);
-//      rowdiff += abs(srcp[x + 6] - nxtp[x + 6]);
-//    }
-//    diff += rowdiff;
-//    srcp += src_pitch;
-//    nxtp += nxt_pitch;
-//  }
-//}
-
 template<typename pixel_t>
 static void checkSceneChangePlanar_2_c(const pixel_t* prvp, const pixel_t* srcp,
   const pixel_t* nxtp, int height, int width, int prv_pitch, int src_pitch,
@@ -1803,33 +1784,6 @@ static void checkSceneChangePlanar_2_c(const pixel_t* prvp, const pixel_t* srcp,
   }
 }
 
-//static void checkSceneChangeYUY2_2_c(const uint8_t* prvp, const uint8_t* srcp,
-//  const uint8_t* nxtp, int height, int width, int prv_pitch, int src_pitch,
-//  int nxt_pitch, uint64_t& diffp, uint64_t& diffn)
-//{
-//  for (int y = 0; y < height; ++y)
-//  {
-//    uint32_t rowdiffp = 0;
-//    uint32_t rowdiffn = 0;
-//    for (int x = 0; x < width; x += 8)
-//    {
-//      rowdiffp += abs(srcp[x + 0] - prvp[x + 0]);
-//      rowdiffp += abs(srcp[x + 2] - prvp[x + 2]);
-//      rowdiffp += abs(srcp[x + 4] - prvp[x + 4]);
-//      rowdiffp += abs(srcp[x + 6] - prvp[x + 6]);
-//      rowdiffn += abs(srcp[x + 0] - nxtp[x + 0]);
-//      rowdiffn += abs(srcp[x + 2] - nxtp[x + 2]);
-//      rowdiffn += abs(srcp[x + 4] - nxtp[x + 4]);
-//      rowdiffn += abs(srcp[x + 6] - nxtp[x + 6]);
-//    }
-//    diffp += rowdiffp;
-//    diffn += rowdiffn;
-//    prvp += prv_pitch;
-//    srcp += src_pitch;
-//    nxtp += nxt_pitch;
-//  }
-//}
-
 bool TFM::checkSceneChange(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int n)
 {
   const int bits_per_pixel = vi->format->bitsPerSample;
@@ -1853,7 +1807,7 @@ bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, co
   int width = vsapi->getFrameWidth(src, 0);
   // this mod16 must be the same as in computing "diffmaxsc"
   
-  // safe mod16 rounding for SSE2 in mind
+  // safe mod16 rounding
     width = ((width >> 4) << 4); // mod16
 
   // every 2nd line
@@ -2256,7 +2210,6 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   }
 #undef ALIGN_NUMBER
 
-  // 16 would be is enough for sse2 but maybe we'll do AVX2?
   tbuffer = decltype(tbuffer) (vs_aligned_malloc<uint8_t>((vi->height >> 1) * tpitchy, ALIGN_BUF), &vs_aligned_free);
   if (!tbuffer) throw TIVTCError("TFM:  malloc failure (tbuffer)!");
   mode7_field = field;

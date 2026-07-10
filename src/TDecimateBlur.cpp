@@ -3,8 +3,8 @@
 **
 **   TIVTC includes a field matching filter (TFM) and a decimation
 **   filter (TDecimate) which can be used together to achieve an
-**   IVTC or for other uses. TIVTC currently supports 8 bit planar YUV and
-**   YUY2 colorspaces.
+**   IVTC or for other uses. TIVTC supports 8-16 bit planar YUV
+**   (4:4:4, 4:2:2 and 4:2:0).
 **
 **   Copyright (C) 2004-2008 Kevin Stone, additional work (C) 2020 pinterf
 **
@@ -108,36 +108,6 @@ void VerticalBlur_c(const uint8_t* srcp0, uint8_t* dstp0, int src_pitch,
     dstp[x] = (srcpp[x] + srcp[x] + 1) >> 1;
 }
 
-//void VerticalBlur_YUY2_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-//  int dst_pitch, int width, int height, int inc)
-//{
-//  if (width == 0) return;
-
-//  const uint8_t* srcpp = srcp - src_pitch;
-//  const uint8_t* srcpn = srcp + src_pitch;
-//  // top line
-//  for (int x = 0; x < width; x += inc)
-//    dstp[x] = (srcp[x] + srcpn[x] + 1) >> 1;
-//  srcpp += src_pitch;
-//  srcp += src_pitch;
-//  srcpn += src_pitch;
-//  dstp += dst_pitch;
-//  // height - 2 lines in between
-//  for (int y = 1; y < height - 1; ++y)
-//  {
-//    for (int x = 0; x < width; x += inc)
-//      dstp[x] = (srcpp[x] + (srcp[x] << 1) + srcpn[x] + 2) >> 2;
-//    srcpp += src_pitch;
-//    srcp += src_pitch;
-//    srcpn += src_pitch;
-//    dstp += dst_pitch;
-//  }
-//  // bottom line
-//  for (int x = 0; x < width; x += inc)
-//    dstp[x] = (srcpp[x] + srcp[x] + 1) >> 1;
-//}
-
-
 void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
   const VSAPI *vsapi)
 {
@@ -206,133 +176,3 @@ void HorizontalBlur_Planar_c(const uint8_t* srcp0, uint8_t* dstp0, int src_pitch
     dstp += dst_pitch;
   }
 }
-
-//void HorizontalBlur_YUY2_lumaonly_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-//  int dst_pitch, int width, int height, bool allow_leftminus1)
-//{
-//  if (width == 0)
-//    return;
-
-//  // YUYV minimum width is 4, at least two luma
-//  const int startx = allow_leftminus1 ? 0 : 2;
-//  for (int y = 0; y < height; ++y)
-//  {
-//    if (!allow_leftminus1)
-//      dstp[0] = (srcp[0] + srcp[2] + 1) >> 1;
-//    int x;
-//    for (x = startx; x < width - 2; ++x)
-//      dstp[x] = (srcp[x - 2] + (srcp[x] << 1) + srcp[x + 2] + 2) >> 2;
-//    dstp[x] = (srcp[x - 2] + srcp[x] + 1) >> 1;
-//    srcp += src_pitch;
-//    dstp += dst_pitch;
-//  }
-//}
-
-//void HorizontalBlur_YUY2_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-//  int dst_pitch, int width, int height, bool allow_leftminus1)
-//{
-//  // width is rowwidth
-//  if (width == 0)
-//    return;
-
-//  // YUYV minimum rowsize is 4, at least two luma
-//  const int startx = allow_leftminus1 ? 0 : 4;
-
-//  if (width >= 8) {
-//    for (int y = 0; y < height; ++y)
-//    {
-//      if (!allow_leftminus1) {
-//        dstp[0] = (srcp[-2] + (srcp[0] << 1) + srcp[2] + 2) >> 2; // Y
-//        dstp[1] = (srcp[-3] + (srcp[1] << 1) + srcp[5] + 2) >> 2; // U
-//        dstp[2] = (srcp[0] + (srcp[2] << 1) + srcp[4] + 2) >> 2; // Y
-//        dstp[3] = (srcp[-1] + (srcp[3] << 1) + srcp[7] + 2) >> 2; // V
-//      }
-//      int x;
-//      for (x = startx; x < width - 4; ++x)
-//      {
-//        dstp[x] = (srcp[x - 2] + (srcp[x] << 1) + srcp[x + 2] + 2) >> 2; // Y
-//        ++x;
-//        dstp[x] = (srcp[x - 4] + (srcp[x] << 1) + srcp[x + 4] + 2) >> 2; // U or V
-//      }
-//      dstp[x] = (srcp[x - 2] + (srcp[x] << 1) + srcp[x + 2] + 2) >> 2; // Y
-//      ++x;
-//      dstp[x] = (srcp[x - 4] + srcp[x] + 1) >> 1; // U
-//      ++x;
-//      dstp[x] = (srcp[x - 2] + srcp[x] + 1) >> 1; // Y
-//      ++x;
-//      dstp[x] = (srcp[x - 4] + srcp[x] + 1) >> 1; // V
-//      srcp += src_pitch;
-//      dstp += dst_pitch;
-//    }
-//    return;
-//  }
-
-//  // width (rowsize) == 4
-//  for (int y = 0; y < height; ++y)
-//  {
-//    if (allow_leftminus1) {
-//      dstp[0] = (srcp[-2] + (srcp[0] << 1) + srcp[2] + 2) >> 2; // Y
-//      dstp[1] = (srcp[-3] + srcp[1] + 1) >> 1; // U
-//      dstp[2] = (srcp[0] + srcp[2] + 1) >> 1; // Y
-//      dstp[3] = (srcp[-1] + srcp[3] + 1) >> 1; // V
-//    }
-//    else {
-//      dstp[0] = (srcp[0] + srcp[2] + 1) >> 1; // Y
-//      dstp[1] = srcp[1]; // U
-//      dstp[2] = (srcp[0] + srcp[2] + 1) >> 1; // Y
-//      dstp[3] = srcp[3]; // V
-//    }
-//    srcp += src_pitch;
-//    dstp += dst_pitch;
-//  }
-
-//}
-
-// always mod 8, sse2 unaligned
-
-//void HorizontalBlur_YUY2_lumaonly_SSE2(const uint8_t *srcp, uint8_t *dstp, int src_pitch,
-//  int dst_pitch, int width, int height)
-//{
-//  HorizontalBlurSSE2_YUY2_R_luma(srcp + 8, dstp + 8, src_pitch, dst_pitch, width - 16, height);
-
-//  for (int y = 0; y < height; ++y)
-//  {
-//    dstp[0] = (srcp[0] + srcp[2] + 1) >> 1;
-//    dstp[2] = (srcp[0] + (srcp[2] << 1) + srcp[4] + 2) >> 2;
-//    dstp[4] = (srcp[2] + (srcp[4] << 1) + srcp[6] + 2) >> 2;
-//    dstp[6] = (srcp[4] + (srcp[6] << 1) + srcp[8] + 2) >> 2;
-//    dstp[width - 8] = (srcp[width - 10] + (srcp[width - 8] << 1) + srcp[width - 6] + 2) >> 2;
-//    dstp[width - 6] = (srcp[width - 8] + (srcp[width - 6] << 1) + srcp[width - 4] + 2) >> 2;
-//    dstp[width - 4] = (srcp[width - 6] + (srcp[width - 4] << 1) + srcp[width - 2] + 2) >> 2;
-//    dstp[width - 2] = (srcp[width - 4] + srcp[width - 2] + 1) >> 1;
-//    srcp += src_pitch;
-//    dstp += dst_pitch;
-//  }
-//}
-
-//void HorizontalBlur_YUY2_SSE2(const uint8_t *srcp, uint8_t *dstp, int src_pitch,
-//  int dst_pitch, int width, int height)
-//{
-//  HorizontalBlurSSE2_YUY2_R(srcp + 8, dstp + 8, src_pitch, dst_pitch, width - 16, height);
-//  for (int y = 0; y < height; ++y)
-//  {
-//    dstp[0] = (srcp[0] + srcp[2] + 1) >> 1;
-//    dstp[1] = (srcp[1] + srcp[5] + 1) >> 1;
-//    dstp[2] = (srcp[0] + (srcp[2] << 1) + srcp[4] + 2) >> 2;
-//    dstp[3] = (srcp[3] + srcp[7] + 1) >> 1;
-//    dstp[4] = (srcp[2] + (srcp[4] << 1) + srcp[6] + 2) >> 2;
-//    dstp[5] = (srcp[1] + (srcp[5] << 1) + srcp[9] + 2) >> 2;
-//    dstp[6] = (srcp[4] + (srcp[6] << 1) + srcp[8] + 2) >> 2;
-//    dstp[7] = (srcp[3] + (srcp[7] << 1) + srcp[11] + 2) >> 2;
-//    dstp[width - 8] = (srcp[width - 10] + (srcp[width - 8] << 1) + srcp[width - 6] + 2) >> 2;
-//    dstp[width - 7] = (srcp[width - 11] + (srcp[width - 7] << 1) + srcp[width - 3] + 2) >> 2;
-//    dstp[width - 6] = (srcp[width - 8] + (srcp[width - 6] << 1) + srcp[width - 4] + 2) >> 2;
-//    dstp[width - 5] = (srcp[width - 9] + (srcp[width - 5] << 1) + srcp[width - 1] + 2) >> 2;
-//    dstp[width - 4] = (srcp[width - 6] + (srcp[width - 4] << 1) + srcp[width - 2] + 2) >> 2;
-//    dstp[width - 3] = (srcp[width - 7] + srcp[width - 3] + 1) >> 1;
-//    dstp[width - 2] = (srcp[width - 4] + srcp[width - 2] + 1) >> 1;
-//    dstp[width - 1] = (srcp[width - 5] + srcp[width - 1] + 1) >> 1;
-//    srcp += src_pitch;
-//    dstp += dst_pitch;
-//  }
-//}

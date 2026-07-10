@@ -3,8 +3,8 @@
 **
 **   TIVTC includes a field matching filter (TFM) and a decimation
 **   filter (TDecimate) which can be used together to achieve an
-**   IVTC or for other uses. TIVTC currently supports 8 bit planar YUV and
-**   YUY2 colorspaces.
+**   IVTC or for other uses. TIVTC supports 8-16 bit planar YUV
+**   (4:4:4, 4:2:2 and 4:2:0).
 **
 **   Copyright (C) 2004-2008 Kevin Stone, additional work (C) 2020 pinterf
 **
@@ -31,27 +31,6 @@
 #include "internal.h"
 #include "TDecimate.h"
 
-//void HorizontalBlurSSE2_YUY2_R_luma(const uint8_t* srcp, uint8_t* dstp, int src_pitch, int dst_pitch, int width, int height);
-//void HorizontalBlurSSE2_YUY2_R(const uint8_t* srcp, uint8_t* dstp, int src_pitch, int dst_pitch, int width, int height);
-
-// used for YUY2
-//void calcLumaDiffYUY2SSD_SSE2_16(const uint8_t* prvp, const uint8_t* nxtp,
-//  int width, int height, int prv_pitch, int nxt_pitch, uint64_t& ssd);
-//void calcLumaDiffYUY2SAD_SSE2_16(const uint8_t* prvp, const uint8_t* nxtp,
-//  int width, int height, int prv_pitch, int nxt_pitch, uint64_t& sad);
-//void calcSSD_SSE2_32x16_YUY2_lumaonly(const uint8_t* ptr1, const uint8_t* ptr2,
-//  int pitch1, int pitch2, int& ssd);
-//void calcSSD_SSE2_32x16(const uint8_t* ptr1, const uint8_t* ptr2,
-//  int pitch1, int pitch2, int& ssd);
-//void calcSSD_SSE2_8x8_YUY2_lumaonly(const uint8_t* ptr1, const uint8_t* ptr2,
-//  int pitch1, int pitch2, int& ssd);
-//void calcSAD_SSE2_32x16(const uint8_t* ptr1, const uint8_t* ptr2,
-//  int pitch1, int pitch2, int& sad);
-//void calcSAD_SSE2_32x16_YUY2_lumaonly(const uint8_t* ptr1, const uint8_t* ptr2,
-//  int pitch1, int pitch2, int& sad);
-//void calcSAD_SSE2_8x8_YUY2_lumaonly(const uint8_t* ptr1, const uint8_t* ptr2,
-//  int pitch1, int pitch2, int& sad); // PF new
-
 
 // generic
 
@@ -71,15 +50,6 @@ void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, Calc
 template<typename pixel_t>
 void HorizontalBlur_Planar_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
   int dst_pitch, int width, int height, bool allow_leftminus1);
-//void HorizontalBlur_YUY2_lumaonly_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-//  int dst_pitch, int width, int height, bool allow_leftminus1);
-//void HorizontalBlur_YUY2_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-//  int dst_pitch, int width, int height, bool allow_leftminus1);
-
-//void HorizontalBlur_YUY2_lumaonly_SSE2(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-//  int dst_pitch, int width, int height);
-//void HorizontalBlur_YUY2_SSE2(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-//  int dst_pitch, int width, int height);
 
 void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
   const VSAPI *vsapi);
@@ -87,9 +57,6 @@ void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
 template<typename pixel_t>
 void VerticalBlur_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
   int dst_pitch, int width, int height);
-//void VerticalBlur_YUY2_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-//  int dst_pitch, int width, int height, int inc);
-
 
 void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma, const VSAPI *vsapi);
 

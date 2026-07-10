@@ -3,8 +3,8 @@
 **
 **   TIVTC includes a field matching filter (TFM) and a decimation
 **   filter (TDecimate) which can be used together to achieve an
-**   IVTC or for other uses. TIVTC currently supports 8 bit planar YUV and
-**   YUY2 colorspaces.
+**   IVTC or for other uses. TIVTC supports 8-16 bit planar YUV
+**   (4:4:4, 4:2:2 and 4:2:0).
 **
 **   Copyright (C) 2004-2008 Kevin Stone, additional work (C) 2020 pinterf
 **
@@ -85,10 +85,8 @@ private:
   void getSetOvr(int n);
   int getEffectivePP(int n) const; // effective PP for frame n (base + P overrides), no side effects
 
-//  void denoiseYUY2(VSFrameRef *mask);
   void denoisePlanar(VSFrameRef *mask) const;
 
-//  void linkYUY2(VSFrameRef *mask);
   template<int planarType>
   void linkPlanar(VSFrameRef *mask) const;
 
@@ -112,7 +110,6 @@ private:
   // not the same as in tdeinterlace.
   template<typename pixel_t, int bits_per_pixel>
   void elaDeintPlanar(VSFrameRef *dst, const VSFrameRef *mask, const VSFrameRef *src, bool nomask, int field) const;
-//  void elaDeintYUY2(VSFrameRef *dst, const VSFrameRef *mask, const VSFrameRef *src, bool nomask, int field);
 
   void copyField(VSFrameRef *dst, const VSFrameRef *src, int field) const;
 

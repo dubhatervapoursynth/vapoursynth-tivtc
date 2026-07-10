@@ -9,7 +9,6 @@
 #include <windows.h>
 #endif
 
-// these settings control whether the included code comes from old asm or newer simd/C rewrites
 
 
 #ifdef _WIN32

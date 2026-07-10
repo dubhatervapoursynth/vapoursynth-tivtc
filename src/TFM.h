@@ -3,8 +3,8 @@
 **
 **   TIVTC includes a field matching filter (TFM) and a decimation
 **   filter (TDecimate) which can be used together to achieve an
-**   IVTC or for other uses. TIVTC currently supports 8 bit planar YUV and
-**   YUY2 colorspaces.
+**   IVTC or for other uses. TIVTC supports 8-16 bit planar YUV
+**   (4:4:4, 4:2:2 and 4:2:0).
 **
 **   Copyright (C) 2004-2008 Kevin Stone, additional work (C) 2020 pinterf
 **
@@ -129,9 +129,6 @@ private:
   void buildDiffMapPlane_Planar(const uint8_t *prvp, const uint8_t *nxtp,
     uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
     int Width, int tpitch, int bits_per_pixel);
-//  void buildDiffMapPlaneYUY2(const uint8_t *prvp, const uint8_t *nxtp,
-//    uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
-//    int Width, int tpitch, IScriptEnvironment *env);
   
   template<typename pixel_t>
   void buildDiffMapPlane2(const uint8_t *prvp, const uint8_t *nxtp,
@@ -168,8 +165,6 @@ private:
   template<typename pixel_t>
   bool checkCombedPlanar_core(const VSFrameRef *src, int n, int match,
     int* blockN, int& xblocksi, int* mics, bool ddebug, int bits_per_pixel);
-//  bool checkCombedYUY2(const VSFrameRef *src, int n, int match,
-//    int *blockN, int &xblocksi, int *mics, bool ddebug, bool chroma,int cthresh);
   
   void writeDisplay(VSFrameRef *dst, int n, int fmatch, int combed, bool over,
     int blockN, int xblocks, bool d2vmatch, int *mics, const VSFrameRef *prv,

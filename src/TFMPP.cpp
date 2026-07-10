@@ -3,8 +3,8 @@
 **
 **   TIVTC includes a field matching filter (TFM) and a decimation
 **   filter (TDecimate) which can be used together to achieve an
-**   IVTC or for other uses. TIVTC currently supports 8 bit planar YUV and
-**   YUY2 colorspaces.
+**   IVTC or for other uses. TIVTC supports 8-16 bit planar YUV
+**   (4:4:4, 4:2:2 and 4:2:0).
 **
 **   Copyright (C) 2004-2008 Kevin Stone, additional work (C) 2020 pinterf
 **
@@ -257,7 +257,6 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
     }
     else
     {
-      // fixme: hbd SIMD
       // use not 1 or 2
       {
         memset(maskw - msk_pitch, 0xFF, msk_pitch*height);
@@ -305,69 +304,6 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
 
 
 // not the same as in TDeint. Here 0xFF instead of 0x3C
-//void TFMPP::denoiseYUY2(const VSFrameRef *mask)
-//{
-//  uint8_t *maskw = mask->GetPtr();
-//  const int mask_pitch = mask->GetPitch();
-//  const int Height = mask->GetHeight();
-//  const int Width = mask->GetWidth();
-//  uint8_t *maskwp = maskw - mask_pitch;
-//  uint8_t *maskwn = maskw + mask_pitch;
-//  for (int y = 1; y < Height - 1; ++y)
-//  {
-//    maskwp += mask_pitch;
-//    maskw += mask_pitch;
-//    maskwn += mask_pitch;
-//    for (int x = 4; x < Width - 4; ++x)
-//    {
-//      if (maskw[x] == 0xFF)
-//      {
-//        if (maskwp[x - 2] == 0xFF) goto check_chroma;
-//        if (maskwp[x] == 0xFF) goto check_chroma;
-//        if (maskwp[x + 2] == 0xFF) goto check_chroma;
-//        if (maskw[x - 2] == 0xFF) goto check_chroma;
-//        if (maskw[x + 2] == 0xFF) goto check_chroma;
-//        if (maskwn[x - 2] == 0xFF) goto check_chroma;
-//        if (maskwn[x] == 0xFF) goto check_chroma;
-//        if (maskwn[x + 2] == 0xFF) goto check_chroma;
-//        maskw[x] = 0;
-//      }
-//    check_chroma:
-//      ++x;
-//      if (maskw[x] == 0xFF)
-//      {
-//        if (maskwp[x - 4] == 0xFF) continue;
-//        if (maskwp[x] == 0xFF) continue;
-//        if (maskwp[x + 4] == 0xFF) continue;
-//        if (maskw[x - 4] == 0xFF) continue;
-//        if (maskw[x + 4] == 0xFF) continue;
-//        if (maskwn[x - 4] == 0xFF) continue;
-//        if (maskwn[x] == 0xFF) continue;
-//        if (maskwn[x + 4] == 0xFF) continue;
-//        maskw[x] = 0;
-//      }
-//    }
-//  }
-//}
-
-//void TFMPP::linkYUY2(const VSFrameRef *mask)
-//{
-//  uint8_t *maskw = mask->GetPtr();
-//  const int mask_pitch = mask->GetPitch();
-//  const int Height = mask->GetHeight();
-//  const int Width = mask->GetWidth() >> 2;
-//  for (int y = 1; y < Height - 1; ++y)
-//  {
-//    maskw += mask_pitch;
-//    for (int x = 0; x < Width; ++x)
-//    {
-//      if ((((unsigned int*)maskw)[x] & 0x00FF00FF) == 0x00FF00FF)
-//      {
-//        ((unsigned int*)maskw)[x] = 0xFFFFFFFF;
-//      }
-//    }
-//  }
-//}
 
 // mask-only no need HBD here
 // Differences
@@ -1209,230 +1145,6 @@ void TFMPP::elaDeintPlanar(VSFrameRef *dst, const VSFrameRef *mask, const VSFram
   }
 }
 
-//void TFMPP::elaDeintYUY2(const VSFrameRef *dst, const VSFrameRef *mask, const VSFrameRef *src, bool nomask, int field)
-//{
-//  const uint8_t *srcp = src->GetReadPtr();
-//  int src_pitch = src->GetPitch();
-//  int Width = src->GetRowSize();
-//  int Height = src->GetHeight();
-//  uint8_t *dstp = dst->GetWritePtr();
-//  int dst_pitch = dst->GetPitch();
-//  const uint8_t *maskp = mask->GetPtr();
-//  int mask_pitch = mask->GetPitch();
-//  srcp += src_pitch*(3 - field);
-//  dstp += dst_pitch*(2 - field);
-//  maskp += mask_pitch*(2 - field);
-//  src_pitch <<= 1;
-//  dst_pitch <<= 1;
-//  mask_pitch <<= 1;
-//  const uint8_t *srcpp = srcp - src_pitch;
-//  const uint8_t *srcppp = srcpp - src_pitch;
-//  const uint8_t *srcpn = srcp + src_pitch;
-//  int stopx = Width;
-//  int Iy1, Iy2, Iye, Ix1, Ix2, edgeS1, edgeS2, sum, sumsq, temp, temp1, temp2, minN, maxN, x, y;
-//  double dir1, dir2, dir, dirF;
-//  for (y = 2 - field; y < Height - 1; y += 2)
-//  {
-//    for (x = 0; x < stopx; ++x)
-//    {
-//      if (nomask || maskp[x] == 0xFF)
-//      {
-//        if (y > 2 && y < Height - 3 && x>7 && x < Width - 9)
-//        {
-//          Iy1 = -srcp[x - 2] - srcp[x] - srcp[x] - srcp[x + 2] + srcppp[x - 2] + srcppp[x] + srcppp[x] + srcppp[x + 2];
-//          Iy2 = -srcpn[x - 2] - srcpn[x] - srcpn[x] - srcpn[x + 2] + srcpp[x - 2] + srcpp[x] + srcpp[x] + srcpp[x + 2];
-//          Ix1 = srcppp[x + 2] + srcpp[x + 2] + srcpp[x + 2] + srcp[x + 2] - srcppp[x - 2] - srcpp[x - 2] - srcpp[x - 2] - srcp[x - 2];
-//          Ix2 = srcpp[x + 2] + srcp[x + 2] + srcp[x + 2] + srcpn[x + 2] - srcpp[x - 2] - srcp[x - 2] - srcp[x - 2] - srcpn[x - 2];
-//          edgeS1 = Ix1*Ix1 + Iy1*Iy1;
-//          edgeS2 = Ix2*Ix2 + Iy2*Iy2;
-//          if (edgeS1 < 1600 && edgeS2 < 1600)
-//          {
-//            dstp[x] = (srcpp[x] + srcp[x] + 1) >> 1;
-//            goto chromajump;
-//          }
-//          if (abs(srcpp[x] - srcp[x]) < 10 && (edgeS1 < 1600 || edgeS2 < 1600))
-//          {
-//            dstp[x] = (srcpp[x] + srcp[x] + 1) >> 1;
-//            goto chromajump;
-//          }
-//          sum = srcpp[x - 2] + srcpp[x] + srcpp[x + 2] + srcp[x - 2] + srcp[x] + srcp[x + 2];
-//          sumsq = srcpp[x - 2] * srcpp[x - 2] + srcpp[x] * srcpp[x] + srcpp[x + 2] * srcpp[x + 2] +
-//            srcp[x - 2] * srcp[x - 2] + srcp[x] * srcp[x] + srcp[x + 2] * srcp[x + 2];
-//          if ((6 * sumsq - sum*sum) < 432)
-//          {
-//            dstp[x] = (srcpp[x] + srcp[x] + 1) >> 1;
-//            goto chromajump;
-//          }
-//          if (Ix1 == 0) dir1 = 3.1415926;
-//          else
-//          {
-//            dir1 = atan(Iy1 / (Ix1*2.0f)) + 1.5707963;
-//            if (Iy1 >= 0) { if (Ix1 < 0) dir1 += 3.1415927; }
-//            else { if (Ix1 >= 0) dir1 += 3.1415927; }
-//            if (dir1 >= 3.1415927) dir1 -= 3.1415927;
-//          }
-//          if (Ix2 == 0) dir2 = 3.1415926;
-//          else
-//          {
-//            dir2 = atan(Iy2 / (Ix2*2.0f)) + 1.5707963;
-//            if (Iy2 >= 0) { if (Ix2 < 0) dir2 += 3.1415927; }
-//            else { if (Ix2 >= 0) dir2 += 3.1415927; }
-//            if (dir2 >= 3.1415927) dir2 -= 3.1415927;
-//          }
-//          if (fabs(dir1 - dir2) < 0.5f)
-//          {
-//            if (edgeS1 >= 3600 && edgeS2 >= 3600) dir = (dir1 + dir2) * 0.5f;
-//            else dir = edgeS1 >= edgeS2 ? dir1 : dir2;
-//          }
-//          else
-//          {
-//            if (edgeS1 >= 5000 && edgeS2 >= 5000)
-//            {
-//              Iye = -srcp[x - 2] - srcp[x] - srcp[x] - srcp[x + 2] + srcpp[x - 2] + srcpp[x] + srcpp[x] + srcpp[x + 2];
-//              if ((Iy1*Iye > 0) && (Iy2*Iye < 0)) dir = dir1;
-//              else if ((Iy1*Iye < 0) && (Iy2*Iye > 0)) dir = dir2;
-//              else
-//              {
-//                if (abs(Iye - Iy1) <= abs(Iye - Iy2)) dir = dir1;
-//                else dir = dir2;
-//              }
-//            }
-//            else dir = edgeS1 >= edgeS2 ? dir1 : dir2;
-//          }
-//          dirF = 0.5f / tan(dir);
-//          if (dirF >= 0.0f)
-//          {
-//            if (dirF >= 0.5f)
-//            {
-//              if (dirF >= 1.0f)
-//              {
-//                if (dirF >= 1.5f)
-//                {
-//                  if (dirF >= 2.0f)
-//                  {
-//                    if (dirF <= 2.50f)
-//                    {
-//                      temp1 = srcpp[x + 8];
-//                      temp2 = srcp[x - 8];
-//                      temp = (srcpp[x + 8] + srcp[x - 8] + 1) >> 1;
-//                    }
-//                    else
-//                    {
-//                      temp1 = temp2 = srcp[x];
-//                      temp = cubicInt<8>(srcppp[x], srcpp[x], srcp[x], srcpn[x]);
-//                    }
-//                  }
-//                  else
-//                  {
-//                    temp1 = (int)((dirF - 1.5f)*(srcpp[x + 8]) + (2.0f - dirF)*(srcpp[x + 6]) + 0.5f);
-//                    temp2 = (int)((dirF - 1.5f)*(srcp[x - 8]) + (2.0f - dirF)*(srcp[x - 6]) + 0.5f);
-//                    temp = (int)((dirF - 1.5f)*(srcpp[x + 8] + srcp[x - 8]) + (2.0f - dirF)*(srcpp[x + 6] + srcp[x - 6]) + 0.5f);
-//                  }
-//                }
-//                else
-//                {
-//                  temp1 = (int)((dirF - 1.0f)*(srcpp[x + 6]) + (1.5f - dirF)*(srcpp[x + 4]) + 0.5f);
-//                  temp2 = (int)((dirF - 1.0f)*(srcp[x - 6]) + (1.5f - dirF)*(srcp[x - 4]) + 0.5f);
-//                  temp = (int)((dirF - 1.0f)*(srcpp[x + 6] + srcp[x - 6]) + (1.5f - dirF)*(srcpp[x + 4] + srcp[x - 4]) + 0.5f);
-//                }
-//              }
-//              else
-//              {
-//                temp1 = (int)((dirF - 0.5f)*(srcpp[x + 4]) + (1.0f - dirF)*(srcpp[x + 2]) + 0.5f);
-//                temp2 = (int)((dirF - 0.5f)*(srcp[x - 4]) + (1.0f - dirF)*(srcp[x - 2]) + 0.5f);
-//                temp = (int)((dirF - 0.5f)*(srcpp[x + 4] + srcp[x - 4]) + (1.0f - dirF)*(srcpp[x + 2] + srcp[x - 2]) + 0.5f);
-//              }
-//            }
-//            else
-//            {
-//              temp1 = (int)(dirF*(srcpp[x + 2]) + (0.5f - dirF)*(srcpp[x]) + 0.5f);
-//              temp2 = (int)(dirF*(srcp[x - 2]) + (0.5f - dirF)*(srcp[x]) + 0.5f);
-//              temp = (int)(dirF*(srcpp[x + 2] + srcp[x - 2]) + (0.5f - dirF)*(srcpp[x] + srcp[x]) + 0.5f);
-//            }
-//          }
-//          else
-//          {
-//            if (dirF <= -0.5f)
-//            {
-//              if (dirF <= -1.0f)
-//              {
-//                if (dirF <= -1.5f)
-//                {
-//                  if (dirF <= -2.0f)
-//                  {
-//                    if (dirF >= -2.50f)
-//                    {
-//                      temp1 = srcpp[x - 8];
-//                      temp2 = srcp[x + 8];
-//                      temp = (srcpp[x - 8] + srcp[x + 8] + 1) >> 1;
-//                    }
-//                    else
-//                    {
-//                      temp1 = temp2 = srcp[x];
-//                      temp = cubicInt<8>(srcppp[x], srcpp[x], srcp[x], srcpn[x]);
-//                    }
-//                  }
-//                  else
-//                  {
-//                    temp1 = (int)((-dirF - 1.5f)*(srcpp[x - 8]) + (2.0f + dirF)*(srcpp[x - 6]) + 0.5f);
-//                    temp2 = (int)((-dirF - 1.5f)*(srcp[x + 8]) + (2.0f + dirF)*(srcp[x + 6]) + 0.5f);
-//                    temp = (int)((-dirF - 1.5f)*(srcpp[x - 8] + srcp[x + 8]) + (2.0f + dirF)*(srcpp[x - 6] + srcp[x + 6]) + 0.5f);
-//                  }
-//                }
-//                else
-//                {
-//                  temp1 = (int)((-dirF - 1.0f)*(srcpp[x - 6]) + (1.5f + dirF)*(srcpp[x - 4]) + 0.5f);
-//                  temp2 = (int)((-dirF - 1.0f)*(srcp[x + 6]) + (1.5f + dirF)*(srcp[x + 4]) + 0.5f);
-//                  temp = (int)((-dirF - 1.0f)*(srcpp[x - 6] + srcp[x + 6]) + (1.5f + dirF)*(srcpp[x - 4] + srcp[x + 4]) + 0.5f);
-//                }
-//              }
-//              else
-//              {
-//                temp1 = (int)((-dirF - 0.5f)*(srcpp[x - 4]) + (1.0f + dirF)*(srcpp[x - 2]) + 0.5f);
-//                temp2 = (int)((-dirF - 0.5f)*(srcp[x + 4]) + (1.0f + dirF)*(srcp[x + 2]) + 0.5f);
-//                temp = (int)((-dirF - 0.5f)*(srcpp[x - 4] + srcp[x + 4]) + (1.0f + dirF)*(srcpp[x - 2] + srcp[x + 2]) + 0.5f);
-//              }
-//            }
-//            else
-//            {
-//              temp1 = (int)((-dirF)*(srcpp[x - 2]) + (0.5f + dirF)*(srcpp[x]) + 0.5f);
-//              temp2 = (int)((-dirF)*(srcp[x + 2]) + (0.5f + dirF)*(srcp[x]) + 0.5f);
-//              temp = (int)((-dirF)*(srcpp[x - 2] + srcp[x + 2]) + (0.5f + dirF)*(srcpp[x] + srcp[x]) + 0.5f);
-//            }
-//          }
-//          minN = std::min(srcpp[x], srcp[x]) - 25;
-//          maxN = std::max(srcpp[x], srcp[x]) + 25;
-//          if (abs(temp1 - temp2) > 20 || abs(srcpp[x] + srcp[x] - temp - temp) > 60 || temp < minN || temp > maxN)
-//          {
-//            temp = cubicInt<8>(srcppp[x], srcpp[x], srcp[x], srcpn[x]);
-//          }
-//          if (temp > 255) temp = 255;
-//          else if (temp < 0) temp = 0;
-//          dstp[x] = temp;
-//        }
-//        else
-//        {
-//          if (y<3 || y>Height - 4) dstp[x] = ((srcp[x] + srcpp[x] + 1) >> 1);
-//          else dstp[x] = cubicInt<8>(srcppp[x], srcpp[x], srcp[x], srcpn[x]);
-//        }
-//      }
-//    chromajump:
-//      ++x;
-//      if (nomask || maskp[x] == 0xFF)
-//      {
-//        if (y<3 || y>Height - 4) dstp[x] = ((srcp[x] + srcpp[x] + 1) >> 1);
-//        else dstp[x] = cubicInt<8>(srcppp[x], srcpp[x], srcp[x], srcpn[x]);
-//      }
-//    }
-//    srcppp = srcpp;
-//    srcpp = srcp;
-//    srcp = srcpn;
-//    srcpn += src_pitch;
-//    maskp += mask_pitch;
-//    dstp += dst_pitch;
-//  }
-//}
-
 // hbd ready
 void TFMPP::maskClip2(const VSFrameRef *src, const VSFrameRef *deint, const VSFrameRef *mask,
   VSFrameRef *dst) const
@@ -1449,7 +1161,6 @@ void TFMPP::maskClip2(const VSFrameRef *src, const VSFrameRef *deint, const VSFr
   {
     const int plane = b;
     srcp = vsapi->getReadPtr(src, plane);
-//    const int rowsize = src->GetRowSize(plane); // YUY2: vi.width is not GetRowSize
     const int width = vsapi->getFrameWidth(src, plane);
     const int height = vsapi->getFrameHeight(src, plane);
     src_pitch = vsapi->getStride(src, plane);

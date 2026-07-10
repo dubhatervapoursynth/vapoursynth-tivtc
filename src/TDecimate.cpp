@@ -3,8 +3,8 @@
 **
 **   TIVTC includes a field matching filter (TFM) and a decimation
 **   filter (TDecimate) which can be used together to achieve an
-**   IVTC or for other uses. TIVTC currently supports 8 bit planar YUV and
-**   YUY2 colorspaces.
+**   IVTC or for other uses. TIVTC supports 8-16 bit planar YUV
+**   (4:4:4, 4:2:2 and 4:2:0).
 **
 **   Copyright (C) 2004-2008 Kevin Stone, additional work (C) 2017-2018 pinterf
 **   orgOut addition: (C)2018 8day
@@ -1173,7 +1173,7 @@ void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, Calc
         *d.metricF = 0;
         if (d.scene)
         {
-          // planar or YUY2 luma+chroma
+          // planar
           if (true)
           // fix in v18: v17 was: !d.chroma instead of d.chroma
           {
@@ -1426,70 +1426,6 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
   current.mSet = true;
   current.setIsFilmD2V();
 }
-
-template<bool SAD>
-void calcLumaDiffYUY2_SADorSSD_c(const uint8_t* prvp, const uint8_t* nxtp,
-  int width, int height, int prv_pitch, int nxt_pitch, int nt, uint64_t& diff) {
-
-  if (width <= 0)
-    return;
-  for (int y = 0; y < height; ++y)
-  {
-    for (int x = 0; x < width; x += 2)
-    {
-      int temp;
-      if constexpr (SAD)
-        temp = abs(prvp[x] - nxtp[x]); // SAD
-      else {
-        temp = prvp[x] - nxtp[x];
-        temp *= temp; // SSD
-      }
-      if (temp > nt) diff += temp;
-      diff += temp;
-    }
-    prvp += prv_pitch;
-    nxtp += nxt_pitch;
-  }
-}
-
-//template<bool SAD>
-//uint64_t calcLumaDiffYUY2_SADorSSD(const uint8_t* prvp, const uint8_t* nxtp,
-//  int width, int height, int prv_pitch, int nxt_pitch, int nt, int cpuFlags)
-//{
-//  uint64_t diff = 0;
-
-//  const bool use_sse2 = (cpuFlags & CPUF_SSE2) ? true : false;
-
-//  int widtha;
-
-//  if (use_sse2 && (nt == 0) && width >= 16) {
-//    widtha = (width / 16) * 16;
-//    if constexpr(SAD)
-//      calcLumaDiffYUY2SAD_SSE2_16(prvp, nxtp, widtha, height, prv_pitch, nxt_pitch, diff);
-//    else
-//      calcLumaDiffYUY2SSD_SSE2_16(prvp, nxtp, widtha, height, prv_pitch, nxt_pitch, diff);
-
-//    calcLumaDiffYUY2_SADorSSD_c<SAD>(prvp + widtha, nxtp + widtha, width - widtha, height, prv_pitch, nxt_pitch, nt, diff);
-//  }
-//  else
-//  {
-//    calcLumaDiffYUY2_SADorSSD_c<SAD>(prvp, nxtp, width, height, prv_pitch, nxt_pitch, nt, diff);
-//  }
-
-//  return diff;
-//}
-
-//uint64_t calcLumaDiffYUY2_SAD(const uint8_t* prvp, const uint8_t* nxtp,
-//  int width, int height, int prv_pitch, int nxt_pitch, int nt, int cpuFlags)
-//{
-//  return calcLumaDiffYUY2_SADorSSD<true>(prvp, nxtp, width, height, prv_pitch, nxt_pitch, nt, cpuFlags);
-//}
-
-//uint64_t calcLumaDiffYUY2_SSD(const uint8_t* prvp, const uint8_t* nxtp,
-//  int width, int height, int prv_pitch, int nxt_pitch, int nt, int cpuFlags)
-//{
-//  return calcLumaDiffYUY2_SADorSSD<false>(prvp, nxtp, width, height, prv_pitch, nxt_pitch, nt, cpuFlags);
-//}
 
 int TDecimate::getTFMFrameProperties(const VSFrameRef *src, int& d2vfilm) const
 {

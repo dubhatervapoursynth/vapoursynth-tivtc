@@ -23,50 +23,6 @@
 #include <algorithm>
 
 
-// fills target byte buffer with 1 where absdiff is less that threshold, 0 otherwise
-void absDiff_c(const uint8_t* srcp1, const uint8_t* srcp2,
-  uint8_t* dstp, int src1_pitch, int src2_pitch, int dst_pitch, int width,
-  int height, int mthresh1, int mthresh2)
-{
-  // for non-YUY2 mthresh1 and 2 are the same
-  // dstp is a simple 1-byte format buffer (no high bit depth content)
-  for (int y = 0; y < height; ++y)
-  {
-    for (int x = 0; x < width; ++x)
-    {
-      if (abs(srcp1[x] - srcp2[x]) < mthresh1) dstp[x] = 1;
-      else dstp[x] = 0;
-      ++x; // next planar pixel or YUY2 chroma
-      if (abs(srcp1[x] - srcp2[x]) < mthresh2) dstp[x] = 1;
-      else dstp[x] = 0;
-    }
-    srcp1 += src1_pitch;
-    srcp2 += src2_pitch;
-    dstp += dst_pitch;
-  }
-}
-
-void absDiff_uint16_c(const uint8_t* srcp1, const uint8_t* srcp2,
-  uint8_t* dstp, int src1_pitch, int src2_pitch, int dst_pitch, int width,
-  int height, int mthresh)
-{
-  // dstp is a simple 1-byte format buffer (no high bit depth content)
-  for (int y = 0; y < height; ++y)
-  {
-    for (int x = 0; x < width; ++x)
-    {
-      if (abs(reinterpret_cast<const uint16_t *>(srcp1)[x] - reinterpret_cast<const uint16_t*>(srcp2)[x]) < mthresh)
-        dstp[x] = 1;
-      else
-        dstp[x] = 0;
-    }
-    srcp1 += src1_pitch;
-    srcp2 += src2_pitch;
-    dstp += dst_pitch;
-  }
-}
-
-// different path if not mod16, but only for remaining 8 bytes
 
 
 template<typename pixel_t>
@@ -115,14 +71,11 @@ template void do_buildABSDiffMask2<uint8_t>(const uint8_t* prvp, const uint8_t* 
 template void do_buildABSDiffMask2<uint16_t>(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dstp,
   int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel);
 
-// Finally this is common for TFM and TDeint, planar and YUY2 (luma, luma+chroma))
+// Finally this is common for TFM and TDeint, planar (luma, luma+chroma))
 // This C code replaces some thousand line of copy pasted original inline asm lines
 // (plus handles 10+bits)
 
-// distance of neighboring pixels:
-// 1 for planar any
-// 2 for YUY2 luma
-// 4 for YUY2 chroma
+// distance of neighboring pixels (always 1 for planar)
 template<typename pixel_t, int bits_per_pixel, int DIST>
 static AVS_FORCEINLINE void AnalyzeOnePixel(uint8_t* dstp,
   const pixel_t* dppp, const pixel_t* dpp,
@@ -182,17 +135,8 @@ static AVS_FORCEINLINE void AnalyzeOnePixel(uint8_t* dstp,
 
   int startx, stopx;
 
-  constexpr bool YUY2_chroma = (DIST == 4);
-
-  if (YUY2_chroma) {
-    const int firstchroma = (x & 2) + 1;
-    startx = x - 4 * 4 < firstchroma ? firstchroma : x - 4 * 4;
-    stopx = x + 4 * 4 + 2 > Width ? Width : x + 4 * 4 + 2;
-  }
-  else {
-    startx = x < 4 * DIST ? 0 : x - 4 * DIST;
-    stopx = x + 4 * DIST + DIST > Width ? Width : x + 4 * DIST + DIST;
-  }
+  startx = x < 4 * DIST ? 0 : x - 4 * DIST;
+  stopx = x + 4 * DIST + DIST > Width ? Width : x + 4 * DIST + DIST;
 
   if (y != 2) {
     for (esi = startx; esi < stopx; esi += DIST) {
@@ -378,8 +322,6 @@ template void check_combing_c_Metric1<uint16_t, int64_t>(const uint16_t* srcp, u
 
 
 // instantiate for 8x8
-
-// YUY2 luma only case
 
 void copyFrame(VSFrameRef *dst, const VSFrameRef *src, const VSAPI *vsapi)
 {

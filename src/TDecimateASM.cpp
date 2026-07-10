@@ -3,8 +3,8 @@
 **
 **   TIVTC includes a field matching filter (TFM) and a decimation
 **   filter (TDecimate) which can be used together to achieve an
-**   IVTC or for other uses. TIVTC currently supports 8 bit planar YUV and
-**   YUY2 colorspaces.
+**   IVTC or for other uses. TIVTC supports 8-16 bit planar YUV
+**   (4:4:4, 4:2:2 and 4:2:0).
 **
 **   Copyright (C) 2004-2008 Kevin Stone, additional work (C) 2020 pinterf
 **
@@ -148,9 +148,6 @@ void calcSSD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
 
 // new
 
-// really YUY2 16x16 with chroma
-
-// really YUY2 16x16 no chroma
 
 
 
@@ -160,10 +157,6 @@ void calcSSD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
 
 // instantiate
 
-// YUY2 16x16 luma+chroma
-
-
-// always mod 8, sse2 unaligned!
 
 
 
@@ -186,7 +179,6 @@ void calcSSD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
 
 
 // true: SAD, false: SSD
-// inc: YUY2 increment
 template<typename pixel_t, bool SAD, int inc>
 void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
   int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff,
