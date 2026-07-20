@@ -306,27 +306,6 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, void *userData, VSCore 
         return;
 
 
-    if (PP > 4) {
-        VSMap *params = vsapi->createMap();
-        VSNodeRef *node = vsapi->propGetNode(out, "clip", 0, nullptr);
-        vsapi->propSetNode(params, "clip", node, paReplace);
-        vsapi->freeNode(node);
-        VSPlugin *std_plugin = vsapi->getPluginById("com.vapoursynth.std", core);
-        VSMap *ret = vsapi->invoke(std_plugin, "Cache", params);
-        vsapi->freeMap(params);
-        if (vsapi->getError(ret)) {
-            char error[512] = { 0 };
-            snprintf(error, 512, "TFM: failed to invoke std.Cache: %s", vsapi->getError(ret));
-            vsapi->freeMap(ret);
-            vsapi->setError(out, error);
-            return;
-        }
-        node = vsapi->propGetNode(ret, "clip", 0, nullptr);
-        vsapi->freeMap(ret);
-        vsapi->propSetNode(out, "clip", node, paReplace);
-        vsapi->freeNode(node);
-    }
-
     if (PP > 1) {
         VSNodeRef *clip2 = vsapi->propGetNode(in, "clip2", 0, &err);
 
@@ -592,7 +571,7 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, void *userData, V
         fmParallelRequests,
         fmUnordered, // Either fmUnordered or fmParallelRequests. I figured out which one but I didn't write it down and forgot.
         fmSerial,
-        fmParallelRequests, // mode 4: serialized production - calcMetric() shares the member `diff` scratch buffer
+        fmParallel, // mode 4 uses per-invocation metric scratch and is safe to run concurrently
         fmParallel,
         fmParallel,
         fmUnordered
