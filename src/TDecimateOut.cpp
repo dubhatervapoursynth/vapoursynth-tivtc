@@ -26,67 +26,6 @@
 #include "TDecimate.h"
 #include <algorithm>
 
-void TDecimate::debugOutput1(int n, bool film, int blend)
-{
-//  if (mode == 0 || (mode == 3 && vfrDec == 0))
-//  {
-//    snprintf(buf, SZ, "TDecimate:  %d: ", curr.frame);
-//    formatMetrics(curr);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", curr.frame);
-//    formatMatches(curr, prev);
-//    OutputDebugString(buf);
-//  }
-//  else
-//  {
-//    snprintf(buf, SZ, "TDecimate:  %d: ", prev.frame);
-//    formatMetrics(prev);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", prev.frame);
-//    formatDups(prev);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", prev.frame);
-//    formatMatches(prev, prev);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", curr.frame);
-//    formatMetrics(curr);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", curr.frame);
-//    formatDups(curr);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", curr.frame);
-//    formatMatches(curr, prev);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", next.frame);
-//    formatMetrics(next);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", next.frame);
-//    formatDups(next);
-//    OutputDebugString(buf);
-//    snprintf(buf, SZ, "TDecimate:  %d: ", next.frame);
-//    formatMatches(next, curr);
-//    OutputDebugString(buf);
-//  }
-//  if (film)
-//  {
-//    if (cycleR > 1 || blend == 3) snprintf(buf, SZ, "TDecimate:  %d:  Dropping Frames:", n);
-//    else snprintf(buf, SZ, "TDecimate:  %d:  Dropping Frame:", n);
-//    formatDecs(curr);
-//  }
-//  else snprintf(buf, SZ, "TDecimate:  %d:  VIDEO", n);
-//  OutputDebugString(buf);
-}
-
-void TDecimate::debugOutput2(int n, int ret, bool film, int f1, int f2, double amount1,
-  double amount2)
-{
-//  if (amount1 == 0.0 && amount2 == 0.0)
-//    snprintf(buf, SZ, "TDecimate:  inframe = %d  useframe = %d\n", n, ret);
-//  else snprintf(buf, SZ, "TDecimate:  inframe: %d  useframe = blend %d-%d (%3.2f,%3.2f)\n",
-//    n, f1, f2, amount1*100.0, amount2*100.0);
-//  OutputDebugString(buf);
-}
-
 //void TDecimate::formatMetrics(Cycle &current)
 //{
 //  char tempBuf[40];
@@ -209,8 +148,10 @@ void TDecimate::displayOutput(VSFrameRef *dst, int n,
 
   if (mode == 0 || (mode == 3 && vfrDec == 0))
   {
-    int mp = prev.frame != -20 ? prev.match[prev.cycleE - 1] : -20;
-    int mc = curr.match[curr.cycleS];
+    // cycleE is -20 on a cleared cycle and 0 for one entirely past the end of the clip, so
+    // guard the index the same way every other caller does.
+    int mp = (prev.frame != -20 && prev.cycleE > 0) ? prev.match[prev.cycleE - 1] : -20;
+    int mc = curr.cycleS < curr.cycleE ? curr.match[curr.cycleS] : -20;
     for (int x = curr.cycleS; x < curr.cycleE; ++x)
     {
       snprintf(buf, SZ, "%d%s%3.2f", curr.frame + x, curr.decimate[x] == 1 ? ":**" : ":  ",
@@ -257,8 +198,10 @@ void TDecimate::displayOutput(VSFrameRef *dst, int n,
   }
   else
   {
-    int mp = prev.frame != -20 ? prev.match[prev.cycleE - 1] : -20;
-    int mc = curr.match[curr.cycleS];
+    // cycleE is -20 on a cleared cycle and 0 for one entirely past the end of the clip, so
+    // guard the index the same way every other caller does.
+    int mp = (prev.frame != -20 && prev.cycleE > 0) ? prev.match[prev.cycleE - 1] : -20;
+    int mc = curr.cycleS < curr.cycleE ? curr.match[curr.cycleS] : -20;
     for (int x = curr.cycleS; x < curr.cycleE; ++x)
     {
       snprintf(buf, SZ, "%d%s%3.2f", curr.frame + x, curr.decimate[x] == 1 ? ":**" : ":  ",

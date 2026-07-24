@@ -108,10 +108,25 @@ static void VS_CC tivtcDisplayFunc(const VSMap *in, VSMap *out, void *userData, 
 
     const char *display_prop = filter == DisplayTFM ? PROP_TFMDisplay : PROP_TDecimateDisplay;
 
-    const VSFrameRef *f = vsapi->propGetFrame(in, "f", 0, nullptr);
+    int err;
+
+    const VSFrameRef *f = vsapi->propGetFrame(in, "f", 0, &err);
+    if (err) {
+        // Nothing to annotate; hand the clip back untouched.
+        vsapi->propSetNode(out, "val", clip, paReplace);
+        return;
+    }
     const VSMap *props = vsapi->getFramePropsRO(f);
-    const char *text = vsapi->propGetData(props, display_prop, 0, nullptr);
-    int text_size = vsapi->propGetDataSize(props, display_prop, 0, nullptr);
+    const char *text = vsapi->propGetData(props, display_prop, 0, &err);
+    int text_size = err ? 0 : vsapi->propGetDataSize(props, display_prop, 0, nullptr);
+    if (err) {
+        // Not every frame carries the property (e.g. TDecimate mode 3's end-of-clip notice, or
+        // a per-frame PP override that makes TFM defer to TFMPP when TFMPP isn't in the chain).
+        // Reading it with a null error pointer made VapourSynth abort the process instead.
+        vsapi->freeFrame(f);
+        vsapi->propSetNode(out, "val", clip, paReplace);
+        return;
+    }
 
     VSMap *params = vsapi->createMap();
     vsapi->propSetNode(params, "clip", clip, paReplace); // clip is freed by vapoursynth somewhere. We don't free it here.
@@ -295,8 +310,10 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, void *userData, VSCore 
 
     int filter_mode = fmParallelRequests; /// It's possible fmParallel could be used in some situations. Study the matter.
     int filter_flags = 0;
-    if (mode == 7) {
-        // mode 7 requires linear access to function correctly.
+    // mode 7 requires linear access to function correctly, and so does d2v duplicate detection:
+    // it decides frame n from the match chosen for frame n-1. Keep this condition in sync with
+    // TFM::linearAccess, which gates the state that may only be trusted under linear access.
+    if (mode == 7 || d2v[0] != '\0') {
         filter_mode = fmSerial;
         filter_flags = nfMakeLinear;
     }

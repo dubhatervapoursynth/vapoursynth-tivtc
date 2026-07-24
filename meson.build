@@ -34,6 +34,9 @@ if host_system == 'windows' or host_system == 'cygwin'
   # Avoid linking errors:
   # /usr/lib/gcc/x86_64-w64-mingw32/10.2.0/../../../../x86_64-w64-mingw32/bin/ld: libtivtc.dll.p/src_TFM.cpp.obj:TFM.cpp:(.text+0x9019): undefined reference to `__strcat_chk' 
   cflags += ['-U_FORTIFY_SOURCE', '-D_FORTIFY_SOURCE=0']
+
+  # windows.h's min/max macros clash with std::min/std::max.
+  cflags += '-DNOMINMAX'
 endif
 
 

@@ -402,39 +402,6 @@ int Cycle::sceneDetect(Cycle &prev, Cycle &next, uint64_t thresh)
   return -20;
 }
 
-void Cycle::debugOutput()
-{
-//  char temp[256];
-//  sprintf(temp, "Cycle:  length = %d  maxFrame = %d  size = %d\n", length, maxFrame, cycleSize);
-//  OutputDebugString(temp);
-//  sprintf(temp, "Cycle:  frame = %d   frameE = %d\n", frame, frameE);
-//  OutputDebugString(temp);
-//  sprintf(temp, "Cycle:  cycleS = %d  cycleE = %d\n", cycleS, cycleE);
-//  OutputDebugString(temp);
-//  sprintf(temp, "Cycle:  frameSO = %d frameEO = %d\n", frameSO, frameEO);
-//  OutputDebugString(temp);
-//  sprintf(temp, "Cycle:  offE = %d    type = %d  blend = %d  dupCount = %d\n", offE, type, blend, dupCount);
-//  OutputDebugString(temp);
-//  sprintf(temp, "Cycle:  dupSet = %c  mSet = %c  lowSet = %c  decSet = %c  isfilmd2v = %c\n",
-//    dupsSet ? 'T' : 'F', mSet ? 'T' : 'F', lowSet ? 'T' : 'F', decSet ? 'T' : 'F',
-//    isfilmd2v ? 'T' : 'F');
-//  OutputDebugString(temp);
-}
-
-void Cycle::debugMetrics(int _length)
-{
-//  char temp[256];
-//  for (int x = 0; x < _length; ++x)
-//  {
-//    sprintf(temp, "Cycle:  %d - %3.2f  %" PRIu64 "  %" PRIu64 "\n", x, diffMetricsN[x], diffMetricsU[x],
-//      diffMetricsUF[x]);
-//    OutputDebugString(temp);
-//    sprintf(temp, "Cycle:  %d - dup = %d  lowest = %d  decimate = %d  decimate2 = %d  match = %d  filmd2v = %d\n", x,
-//      dupArray[x], lowest[x], decimate[x], decimate2[x], match[x], filmd2v[x]);
-//    OutputDebugString(temp);
-//  }
-}
-
 Cycle::Cycle(int _size, int _sdlim)
 {
   mSet = lowSet = dupsSet = decSet = isfilmd2v = false;
@@ -447,7 +414,8 @@ Cycle::Cycle(int _size, int _sdlim)
   diffMetricsN = nullptr;
   cycleSize = std::max(0, _size);
   sdlim = _sdlim;
-  allocSpace();
+  if (!allocSpace())
+    throw TIVTCError("TIVTC-Cycle:  malloc failure!");
   for (int x = 0; x < cycleSize; ++x)
   {
     dupArray[x] = lowest[x] = decimate[x] = match[x] = decimate2[x] = filmd2v[x] = -20;
@@ -457,6 +425,11 @@ Cycle::Cycle(int _size, int _sdlim)
 }
 
 Cycle::~Cycle()
+{
+  freeSpace();
+}
+
+void Cycle::freeSpace()
 {
   if (dupArray != nullptr) { free(dupArray); dupArray = nullptr; }
   if (lowest != nullptr) { free(lowest); lowest = nullptr; }
@@ -474,18 +447,7 @@ Cycle::~Cycle()
 
 bool Cycle::allocSpace()
 {
-  if (dupArray != nullptr) { free(dupArray); dupArray = nullptr; }
-  if (lowest != nullptr) { free(lowest); lowest = nullptr; }
-  if (match != nullptr) { free(match); match = nullptr; }
-  if (filmd2v != nullptr) { free(filmd2v); filmd2v = nullptr; }
-  if (decimate != nullptr) { free(decimate); decimate = nullptr; }
-  if (decimate2 != nullptr) { free(decimate2); decimate2 = nullptr; }
-  if (dect != nullptr) { free(dect); dect = nullptr; }
-  if (dect2 != nullptr) { free(dect2); dect2 = nullptr; }
-  if (diffMetricsU != nullptr) { free(diffMetricsU); diffMetricsU = nullptr; }
-  if (diffMetricsUF != nullptr) { free(diffMetricsUF); diffMetricsUF = nullptr; }
-  if (tArray != nullptr) { free(tArray); tArray = nullptr; }
-  if (diffMetricsN != nullptr) { free(diffMetricsN); diffMetricsN = nullptr; }
+  freeSpace();
   dupArray = (int *)malloc(cycleSize * sizeof(int));
   lowest = (int *)malloc(cycleSize * sizeof(int));
   match = (int *)malloc(cycleSize * sizeof(int));
@@ -498,17 +460,23 @@ bool Cycle::allocSpace()
   diffMetricsUF = (uint64_t *)malloc(cycleSize * sizeof(uint64_t));
   tArray = (uint64_t *)malloc(cycleSize * sizeof(uint64_t));
   diffMetricsN = (double *)malloc(cycleSize * sizeof(double));
-  if (dupArray == nullptr || lowest == nullptr || match == nullptr || filmd2v == nullptr ||
+  if (cycleSize > 0 &&
+    (dupArray == nullptr || lowest == nullptr || match == nullptr || filmd2v == nullptr ||
     decimate == nullptr || decimate2 == nullptr || diffMetricsU == nullptr ||
     diffMetricsUF == nullptr || diffMetricsN == nullptr || tArray == nullptr ||
-    dect == nullptr || dect2 == nullptr) return false;
+    dect == nullptr || dect2 == nullptr))
+  {
+    freeSpace(); // don't leave a half-allocated object behind
+    return false;
+  }
   return true;
 }
 
 void Cycle::setSize(int _size)
 {
   cycleSize = std::max(0, _size);
-  allocSpace();
+  if (!allocSpace())
+    throw TIVTCError("TIVTC-Cycle:  malloc failure!");
   for (int x = 0; x < cycleSize; ++x)
   {
     dupArray[x] = lowest[x] = decimate[x] = match[x] = decimate2[x] = filmd2v[x] = -20;
@@ -519,6 +487,7 @@ void Cycle::setSize(int _size)
 
 Cycle& Cycle::operator=(Cycle& ob2)
 {
+  if (this == &ob2) return *this;
   length = ob2.length;
   maxFrame = ob2.maxFrame;
   frame = ob2.frame;
@@ -536,16 +505,18 @@ Cycle& Cycle::operator=(Cycle& ob2)
   dupCount = ob2.dupCount;
   blend = ob2.blend;
   isfilmd2v = ob2.isfilmd2v;
-  cycleSize = std::min(cycleSize, ob2.cycleSize);
-  if (length > cycleSize) length = cycleSize;
-  memcpy(dupArray, ob2.dupArray, cycleSize * sizeof(int));
-  memcpy(lowest, ob2.lowest, cycleSize * sizeof(int));
-  memcpy(match, ob2.match, cycleSize * sizeof(int));
-  memcpy(filmd2v, ob2.filmd2v, cycleSize * sizeof(int));
-  memcpy(decimate, ob2.decimate, cycleSize * sizeof(int));
-  memcpy(decimate2, ob2.decimate2, cycleSize * sizeof(int));
-  memcpy(diffMetricsU, ob2.diffMetricsU, cycleSize * sizeof(uint64_t));
-  memcpy(diffMetricsUF, ob2.diffMetricsUF, cycleSize * sizeof(uint64_t));
-  memcpy(diffMetricsN, ob2.diffMetricsN, cycleSize * sizeof(double));
+  // Copy only what both sides can hold, but keep our own capacity: overwriting cycleSize with
+  // the smaller of the two permanently shrank this object even though its buffers stayed big.
+  const int n = std::min(cycleSize, ob2.cycleSize);
+  if (length > n) length = n;
+  memcpy(dupArray, ob2.dupArray, n * sizeof(int));
+  memcpy(lowest, ob2.lowest, n * sizeof(int));
+  memcpy(match, ob2.match, n * sizeof(int));
+  memcpy(filmd2v, ob2.filmd2v, n * sizeof(int));
+  memcpy(decimate, ob2.decimate, n * sizeof(int));
+  memcpy(decimate2, ob2.decimate2, n * sizeof(int));
+  memcpy(diffMetricsU, ob2.diffMetricsU, n * sizeof(uint64_t));
+  memcpy(diffMetricsUF, ob2.diffMetricsUF, n * sizeof(uint64_t));
+  memcpy(diffMetricsN, ob2.diffMetricsN, n * sizeof(double));
   return *this;
 }

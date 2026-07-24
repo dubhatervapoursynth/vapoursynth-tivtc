@@ -381,7 +381,8 @@ d2vCJump:
           (!(field^order) && (order2[0] == 0 || order2[0] == 1 || order2[0] == 4))))
         {
           bool xfield = (field^order) == 0 ? false : true;
-          int lmatch = lastMatch.frame == n - 1 ? lastMatch.match : -20;
+          // Only trust lastMatch when frames are guaranteed to arrive in order.
+          int lmatch = (linearAccess && lastMatch.frame == n - 1) ? lastMatch.match : -20;
           if (!((order2[0] == 4 && lmatch == 0 && !xfield && (order2[1] == 0 || order2[2] == 0)) ||
             (order2[0] == 3 && lmatch == 2 && xfield && (order2[1] == 2 || order2[2] == 2))))
           {
@@ -739,7 +740,10 @@ bool TFM::getMatchOvr(int n, int &match, int &combed, bool &d2vmatch, bool isSC)
 bool TFM::d2vduplicate(int match, int combed, int n)
 {
   if (d2vfilmarray.size() == 0 || d2vfilmarray[n] == 0) return false;
-  if (n - 1 != lastMatch.frame)
+  // This decision depends on the previous frame's match, so it is only meaningful when frames
+  // arrive in order. Without that guarantee, deliberately fall back to "not a duplicate"
+  // instead of letting request scheduling decide the answer.
+  if (!linearAccess || n - 1 != lastMatch.frame)
     lastMatch.field = lastMatch.frame = lastMatch.combed = lastMatch.match = -20;
   if ((d2vfilmarray[n] & D2VARRAY_DUP_MASK) == 0x3) // indicates possible top field duplicate
   {
@@ -1797,7 +1801,11 @@ template<typename pixel_t>
 bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt,
   int n, int bits_per_pixel)
 {
-  if (sclast.frame == n + 1) return sclast.sc;
+  // Memoize the result for frame n only. The old cache also reused the previous call's diffn as
+  // this call's diffp, which silently assumed the previously processed frame was n-1. Under
+  // fmParallelRequests VapourSynth serializes execution but not ordering, so that made the
+  // scene change verdict for a given frame depend on request scheduling.
+  if (sclast.frame == n) return sclast.sc;
   uint64_t diffp = 0;
   uint64_t diffn = 0;
   const uint8_t *prvp = vsapi->getReadPtr(prv, 0);
@@ -1819,29 +1827,15 @@ bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, co
   nxtp += (1 - field)*(nxt_pitch >> 1);
 
 
-  if (sclast.frame == n)
-  {
-    diffp = ((uint64_t)sclast.diff) << (bits_per_pixel - 8);
-      checkSceneChangePlanar_1_c<pixel_t>(
-        reinterpret_cast<const pixel_t*>(srcp),
-        reinterpret_cast<const pixel_t*>(nxtp),
-        height, width,
-        src_pitch / sizeof(pixel_t),
-        nxt_pitch / sizeof(pixel_t),
-        diffn);
-  }
-  else
-  {
-      checkSceneChangePlanar_2_c<pixel_t>(
-        reinterpret_cast<const pixel_t*>(prvp),
-        reinterpret_cast<const pixel_t*>(srcp),
-        reinterpret_cast<const pixel_t*>(nxtp),
-        height, width,
-        prv_pitch / sizeof(pixel_t),
-        src_pitch / sizeof(pixel_t),
-        nxt_pitch / sizeof(pixel_t),
-        diffp, diffn);
-  }
+  checkSceneChangePlanar_2_c<pixel_t>(
+    reinterpret_cast<const pixel_t*>(prvp),
+    reinterpret_cast<const pixel_t*>(srcp),
+    reinterpret_cast<const pixel_t*>(nxtp),
+    height, width,
+    prv_pitch / sizeof(pixel_t),
+    src_pitch / sizeof(pixel_t),
+    nxt_pitch / sizeof(pixel_t),
+    diffp, diffn);
 
   // scale back to 8 bit world
   diffn >>= (bits_per_pixel - 8);
@@ -1853,12 +1847,9 @@ bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, co
 //      (diffp > diffmaxsc || diffn > diffmaxsc) ? 'T' : 'F');
 //    OutputDebugString(buf);
 //  }
-  sclast.frame = n + 1;
-  sclast.diff = (unsigned long)diffn;
-  sclast.sc = true;
-  if (diffp > diffmaxsc || diffn > diffmaxsc) return true;
-  sclast.sc = false;
-  return false;
+  sclast.frame = n;
+  sclast.sc = (diffp > diffmaxsc || diffn > diffmaxsc);
+  return sclast.sc;
 }
 
 void TFM::createWeaveFrame(VSFrameRef *dst, const VSFrameRef *prv, const VSFrameRef *src,
@@ -2063,9 +2054,6 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   if (!vi->format || vi->width == 0 || vi->height == 0)
       throw TIVTCError("TFM: the input clip must have constant format and dimensions.");
 
-  if (vi->format->colorFamily == cmGray)
-      chroma = false;
-
   if (vi->format->bitsPerSample > 16)
     throw TIVTCError("TFM:  only 8-16 bit formats supported!");
   if (vi->format->sampleType != stInteger)
@@ -2109,8 +2097,9 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
     throw TIVTCError("TFM:  slow must be set to 0, 1, or 2!");
   if (micout < 0 || micout > 2)
     throw TIVTCError("TFM:  micout must be set to 0, 1, or 2!");
-  if (micmatching < 0 || micmatching > 4)
-    throw TIVTCError("TFM:  micmatching must be set to 0, 1, 2, 3, or 4!");
+  // Only 1, 2 and 3 are implemented; 4 used to be accepted but silently did nothing.
+  if (micmatching < 0 || micmatching > 3)
+    throw TIVTCError("TFM:  micmatching must be set to 0, 1, 2, or 3!");
   if (opt < 0 || opt > 4)
     throw TIVTCError("TFM:  opt must be set to 0, 1, 2, 3, or 4!");
   if (metric != 0 && metric != 1)
@@ -2147,7 +2136,13 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   
   // no high bit depth scaling here
   // Warning: this mod16 must match with the calculation in "checkSceneChange"
-  diffmaxsc = int((double(((vi->width >> 4) << 4)*vi->height * (235-16))*scthresh*0.5) / 100.0);
+  // Keep the pixel count in floating point: width*height*219 overflows a 32 bit int above
+  // roughly 9.8 megapixels (5K and up).
+  diffmaxsc = (uint64_t)((double((vi->width >> 4) << 4) * vi->height * (235 - 16) * scthresh * 0.5) / 100.0);
+
+  // Frames only arrive in order when the filter is registered with nfMakeLinear; PluginInit
+  // must keep this condition in sync with the filter mode it picks.
+  linearAccess = (mode == 7) || d2v.size() > 0;
 
   sclast.frame = -20;
   sclast.sc = true;
@@ -2249,9 +2244,8 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
         {
           if (firstLine == 1)
           {
-            bool changed = false;
-            if (_strnicmp(linein, "field = top", 11) == 0) { fieldt = 1; changed = true; }
-            else if (_strnicmp(linein, "field = bottom", 14) == 0) { fieldt = 0; changed = true; }
+            if (_strnicmp(linein, "field = top", 11) == 0) { fieldt = 1; }
+            else if (_strnicmp(linein, "field = bottom", 14) == 0) { fieldt = 0; }
 //            if (debug && changed)
 //            {
 //              sprintf(buf, "TFM:  detected field for input file - %s.\n",
@@ -2270,7 +2264,8 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
             while (*linet != ' ') linet++;
             linet++;
             unsigned int m, tempCrc;
-            sscanf(linet, "%x", &m);
+            if (sscanf(linet, "%x", &m) != 1)
+              throw TIVTCError("TFM:  input file error (malformed crc32 line)!");
             calcCRC(child, 15, tempCrc, vsapi);
             if (tempCrc != m && !batch)
             {
@@ -2287,6 +2282,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
             linet++;
           }
           if (*linet == 0) { --firstLine; continue; }
+          z = -1; // a failed parse must fail the range check below, not reuse a previous line's value
           sscanf(linein, "%d", &z);
           linep = linein;
           while (*linep != 'p' && *linep != 'c' && *linep != 'n' && *linep != 'u' &&
@@ -2459,9 +2455,8 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
           {
             if (firstLine == 1)
             {
-              bool changed = false;
-              if (_strnicmp(linein, "field = top", 11) == 0) { fieldt = 1; changed = true; }
-              else if (_strnicmp(linein, "field = bottom", 14) == 0) { fieldt = 0; changed = true; }
+              if (_strnicmp(linein, "field = top", 11) == 0) { fieldt = 1; }
+              else if (_strnicmp(linein, "field = bottom", 14) == 0) { fieldt = 0; }
 //              if (debug && changed)
 //              {
 //                sprintf(buf, "TFM:  detected field for ovr file - %s.\n",
@@ -2482,6 +2477,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
             linep++;
             if (*linep == 'p' || *linep == 'c' || *linep == 'n' || *linep == 'b' || *linep == 'u' || *linep == 'l' || *linep == 'h')
             {
+              z = -1; // a failed parse must fail the range check below, not reuse a previous line's value
               sscanf(linein, "%d", &z);
               if (z<0 || z>nfrms || z <= last)
               {
@@ -2518,6 +2514,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
             }
             else if (*linep == '-' || *linep == '+')
             {
+              z = -1; // a failed parse must fail the range check below, not reuse a previous line's value
               sscanf(linein, "%d", &z);
               if (z<0 || z>nfrms)
               {
@@ -2548,6 +2545,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
             }
             else
             {
+              z = -1; // a failed parse must fail the range check below, not reuse a previous line's value
               sscanf(linein, "%d", &z);
               if (z<0 || z>nfrms)
               {
@@ -2564,7 +2562,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
                   linep++;
                   linep++;
                   if (*linep == 0) continue;
-                  sscanf(linep, "%d", &b);
+                  if (sscanf(linep, "%d", &b) != 1) continue;
                   if (q == 102 && b != 0 && b != 1 && b != -1)
                   {
                     throw TIVTCError("TFM:  ovr input error (bad field value)!");
@@ -2596,6 +2594,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
             linep++;
             if (*linep == 'p' || *linep == 'c' || *linep == 'n' || *linep == 'u' || *linep == 'b' || *linep == 'l' || *linep == 'h')
             {
+              z = -1; w = -1; // ditto: a partial parse must not leave a previous line's value in place
               sscanf(linein, "%d,%d", &z, &w);
               if (w == 0) w = nfrms;
               if (z<0 || z>nfrms || w<0 || w>nfrms || w < z || z <= last)
@@ -2677,6 +2676,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
             }
             else if (*linep == '-' || *linep == '+')
             {
+              z = -1; w = -1; // ditto: a partial parse must not leave a previous line's value in place
               sscanf(linein, "%d,%d", &z, &w);
               if (w == 0) w = nfrms;
               if (z<0 || z>nfrms || w<0 || w>nfrms || w < z)
@@ -2753,6 +2753,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
             }
             else
             {
+              z = -1; w = -1; // ditto: a partial parse must not leave a previous line's value in place
               sscanf(linein, "%d,%d", &z, &w);
               if (w == 0) w = nfrms;
               if (z<0 || z>nfrms || w<0 || w>nfrms || w < z)
@@ -2770,7 +2771,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
                   linep++;
                   linep++;
                   if (*linep == 0) continue;
-                  sscanf(linep, "%d", &b);
+                  if (sscanf(linep, "%d", &b) != 1) continue;
                   if (q == 102 && b != 0 && b != 1 && b != -1)
                   {
                     throw TIVTCError("TFM:  ovr input error (bad field value)!");
@@ -2810,7 +2811,8 @@ emptyovr:
   {
     if ((f = decltype (f)(tivtc_fopen(output.c_str(), "w"), &fclose)) != nullptr)
     {
-      _fullpath(outputFull, output.c_str(), MAX_PATH);
+      if (_fullpath(outputFull, output.c_str(), MAX_PATH) == nullptr)
+        throw TIVTCError("TFM:  output file error (could not resolve the full path)!");
       calcCRC(child, 15, outputCrc, vsapi);
       outArray.resize(vi->numFrames, 0);
       moutArray.resize(vi->numFrames, -1);
@@ -2828,7 +2830,8 @@ emptyovr:
   {
     if ((f = decltype (f)(tivtc_fopen(outputC.c_str(), "w"), &fclose)) != nullptr)
     {
-      _fullpath(outputCFull, outputC.c_str(), MAX_PATH);
+      if (_fullpath(outputCFull, outputC.c_str(), MAX_PATH) == nullptr)
+        throw TIVTCError("TFM:  outputC file error (could not resolve the full path)!");
       if (outArray.size() == 0)
       {
         outArray.resize(vi->numFrames, 0);

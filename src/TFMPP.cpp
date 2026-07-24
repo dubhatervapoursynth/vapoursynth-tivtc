@@ -1217,8 +1217,9 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
   VSNodeRef *_clip2, bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core)
     : vsapi(_vsapi), child(_child),
   PP(_PP), mthresh(_mthresh), ovr(_ovr), display(_display), clip2(_clip2),
-  usehints(_usehints), opt(_opt)
+  opt(_opt)
 {
+    (void)_usehints; // hints are read from frame properties now
     vi = vsapi->getVideoInfo(child);
 
   mmask = nullptr;
@@ -1303,6 +1304,7 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
             linep++;
             if (*linep == 'M' || *linep == 'P')
             {
+              z = -1; // a failed parse must fail the range check below
               sscanf(linein, "%d", &z);
               if (z<0 || z>nfrms)
               {
@@ -1319,7 +1321,7 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
                   linep++;
                   linep++;
                   if (*linep == 0) continue;
-                  sscanf(linep, "%d", &b);
+                  if (sscanf(linep, "%d", &b) != 1) continue;
                   if (q == 80 && (b < 0 || b > 7))
                   {
                     throw TIVTCError("TFMPP:  ovr input error (bad PP value)!");
@@ -1340,6 +1342,7 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
             linep++;
             if (*linep == 'P' || *linep == 'M')
             {
+              z = -1; w = -1; // ditto, and a partial parse must not leave a stale range end
               sscanf(linein, "%d,%d", &z, &w);
               if (w == 0) w = nfrms;
               if (z<0 || z>nfrms || w<0 || w>nfrms || w < z)
@@ -1357,7 +1360,7 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
                   linep++;
                   linep++;
                   if (*linep == 0) continue;
-                  sscanf(linep, "%d", &b);
+                  if (sscanf(linep, "%d", &b) != 1) continue;
                   if (q == 80 && (b < 0 || b > 7))
                   {
                     throw TIVTCError("TFMPP:  ovr input error (bad PP value)!");

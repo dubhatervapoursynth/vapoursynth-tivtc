@@ -177,13 +177,7 @@ private:
   void getOvrCycle(Cycle &current, bool mode2);
   void displayOutput(VSFrameRef *dst, int n,
     int ret, bool film, double amount1, double amount2, int f1, int f2);
-  void formatMetrics(Cycle &current);
-  void formatDups(Cycle &current);
   void formatDecs(std::string &buf, Cycle &current);
-  void formatMatches(Cycle &current);
-  void formatMatches(Cycle &current, Cycle &previous);
-  void debugOutput1(int n, bool film, int blend);
-  void debugOutput2(int n, int ret, bool film, int f1, int f2, double amount1, double amount2);
   void addMetricCycle(const Cycle &j);
   bool checkForObviousDecFrame(Cycle &p, Cycle &c, Cycle &n);
   void mostSimilarDecDecision(Cycle &p, Cycle &c, Cycle &n);

@@ -81,7 +81,7 @@ static AVS_FORCEINLINE void AnalyzeOnePixel(uint8_t* dstp,
   const pixel_t* dppp, const pixel_t* dpp,
   const pixel_t* dp,
   const pixel_t* dpn, const pixel_t* dpnn,
-  int& x, int& y, int& Width, int& Height)
+  int& x, int& y, int& Width, int lastyy)
 {
   constexpr int Const3 = 3 << (bits_per_pixel - 8);
   constexpr int Const19 = 19 << (bits_per_pixel - 8);
@@ -157,7 +157,7 @@ static AVS_FORCEINLINE void AnalyzeOnePixel(uint8_t* dstp,
       break;
   }
 
-  if (y != Height - 4) {
+  if (y <= lastyy) {
     for (esi = startx; esi < stopx; esi += DIST)
     {
       if (dpnn[esi] > Const19) {
@@ -199,9 +199,17 @@ void AnalyzeDiffMask_Planar(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer8, int
   const pixel_t* dpn = tbuffer + tpitch * 2;
   const pixel_t* dpnn = tbuffer + tpitch * 3;
 
-  for (int y = 2; y < Height - 2; y += 2) {
+  // buildABSDiffMask() only fills (Height >> 1) rows of tbuffer. For an even plane height that
+  // is exactly what the walk below needs, but for an odd height (4:2:0 chroma of a clip whose
+  // height is 2 mod 4) deriving the limits from Height instead reads one/two rows of
+  // uninitialised scratch. Derive them from the rows that actually exist.
+  const int rows = Height >> 1;
+  const int lasty = 2 * rows - 4;  // largest y whose dpn row exists
+  const int lastyy = 2 * rows - 6; // largest y whose dpnn row exists
+
+  for (int y = 2; y <= lasty; y += 2) {
     for (int x = 1; x < Width - 1; x++) {
-      AnalyzeOnePixel<pixel_t, bits_per_pixel, 1>(dstp, dppp, dpp, dp, dpn, dpnn, x, y, Width, Height);
+      AnalyzeOnePixel<pixel_t, bits_per_pixel, 1>(dstp, dppp, dpp, dp, dpn, dpnn, x, y, Width, lastyy);
     }
     dppp += tpitch;
     dpp += tpitch;

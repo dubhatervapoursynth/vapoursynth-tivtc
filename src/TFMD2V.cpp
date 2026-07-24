@@ -104,7 +104,7 @@ void TFM::parseD2V()
     }
     return;
   }
-  error = D2V_get_output_filename(wfile);
+  error = D2V_get_output_filename(wfile, sizeof(wfile));
   if (error != 0)
   {
     throw TIVTCError("TFM:  could not obtain output d2v filename!");
@@ -300,7 +300,8 @@ int TFM::D2V_initialize_array(std::vector<int> &array, int &d2vtype, int &frames
 {
     std::unique_ptr<FILE, decltype (&fclose)> ind2v(nullptr, nullptr);
   if (array.size() != 0) { array.resize(0); }
-  int num = 0, num2 = 0, pass = 1, val, D2Vformat;
+  int num = 0, num2 = 0, pass = 1, D2Vformat;
+  unsigned int val; // %x writes through an unsigned int*
   char line[1025], *p;
 pass2_start:
   ind2v = decltype (ind2v)(tivtc_fopen(d2v.c_str(), "r"), &fclose);
@@ -309,7 +310,7 @@ pass2_start:
   {
     array.resize(num + 10, 9);
   }
-  fgets(line, 1024, ind2v.get());
+  if (fgets(line, 1024, ind2v.get()) == nullptr) return 2;
   D2Vformat = 0;
   if (strncmp(line, "DVD2AVIProjectFile", 18) != 0)
   {
@@ -329,12 +330,16 @@ pass2_start:
     D2Vformat += 3;
   }
   if (D2Vformat == 0) sscanf(line, "DVD2AVIProjectFile%d", &D2Vformat);
+  bool found_location = false;
   while (fgets(line, 1024, ind2v.get()) != nullptr)
   {
-    if (strncmp(line, "Location", 8) == 0) break;
+    if (strncmp(line, "Location", 8) == 0) { found_location = true; break; }
   }
-  fgets(line, 1024, ind2v.get());
-  fgets(line, 1024, ind2v.get());
+  // Without these three lines there is no frame data to parse, and continuing would read
+  // whatever the last successful fgets left in "line".
+  if (!found_location) return 2;
+  if (fgets(line, 1024, ind2v.get()) == nullptr) return 2;
+  if (fgets(line, 1024, ind2v.get()) == nullptr) return 2;
   do
   {
     p = line;
@@ -354,7 +359,7 @@ pass2_start:
       if (pass == 1) ++num;
       else
       {
-        sscanf(p, "%x", &val);
+        if (sscanf(p, "%x", &val) != 1) break;
         if (D2Vformat > 9)
         {
           if (D2Vformat > 10 && val == 0xFF) array[num2++] = 9;
@@ -383,13 +388,14 @@ pass2_start:
 
 int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
 {
-  int num = 0, D2Vformat, val;
+  int num = 0, D2Vformat;
+  unsigned int val; // %x writes through an unsigned int*
   char line[1025], *p, tbuf[16];
   std::unique_ptr<FILE, decltype (&fclose)> ind2v(tivtc_fopen(d2v.c_str(), "r"), &fclose);
   if (ind2v == nullptr) return 1;
   std::unique_ptr<FILE, decltype (&fclose)> outd2v(tivtc_fopen(wfile, "w"), &fclose);
   if (outd2v == nullptr) return 2;
-  fgets(line, 1024, ind2v.get());
+  if (fgets(line, 1024, ind2v.get()) == nullptr) return 3;
   D2Vformat = 0;
   if (strncmp(line, "DVD2AVIProjectFile", 18) != 0)
   {
@@ -410,14 +416,17 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
   }
   if (D2Vformat == 0) sscanf(line, "DVD2AVIProjectFile%d", &D2Vformat);
   fputs(line, outd2v.get());
+  bool found_location = false;
   while (fgets(line, 1024, ind2v.get()) != nullptr)
   {
     fputs(line, outd2v.get());
-    if (strncmp(line, "Location", 8) == 0) break;
+    if (strncmp(line, "Location", 8) == 0) { found_location = true; break; }
   }
-  fgets(line, 1024, ind2v.get());
+  if (!found_location) return 3;
+  if (fgets(line, 1024, ind2v.get()) == nullptr) return 3;
   fputs(line, outd2v.get());
-  fgets(line, 1024, ind2v.get());
+  if (fgets(line, 1024, ind2v.get()) == nullptr) return 3;
+  bool have_line;
   do
   {
     p = line;
@@ -441,7 +450,7 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
       }
       else
       {
-        sscanf(p, "%x", &val);
+        if (sscanf(p, "%x", &val) != 1) break;
         if (array[num] != 9)
         {
           val &= ~0x03;
@@ -455,19 +464,27 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
       p++;
     }
     fputs(line, outd2v.get());
-  } while ((fgets(line, 1024, ind2v.get()) != nullptr) && line[0] > 47 && line[0] < 123);
-  fputs(line, outd2v.get());
+    have_line = (fgets(line, 1024, ind2v.get()) != nullptr);
+  } while (have_line && line[0] > 47 && line[0] < 123);
+  // At EOF "line" still holds the previous iteration's text, which the loop already wrote out;
+  // only echo it when fgets actually produced a new line.
+  if (have_line) fputs(line, outd2v.get());
   while (fgets(line, 1024, ind2v.get()) != nullptr) fputs(line, outd2v.get());
   return 0;
 }
 
-int TFM::D2V_get_output_filename(char wfile[]) const
+int TFM::D2V_get_output_filename(char *wfile, size_t wfile_size) const
 {
   FILE *outd2v = nullptr;
+  // The suffix work below can grow the name by "-FIXED.d2v" plus up to "_10", so refuse
+  // anything that could not hold the result rather than running off the end of the buffer.
+  if (d2v.size() + 16 >= wfile_size) return 1;
   strcpy(wfile, d2v.c_str());
   char *p = wfile;
   while (*p != 0) p++;
+  char *const end = p;
   while (p > wfile && *p != 46) p--;
+  if (*p != 46) p = end; // no extension: append instead of overwriting the whole name
   *p++ = '-'; *p++ = 'F'; *p++ = 'I'; *p++ = 'X'; *p++ = 'E'; *p++ = 'D';
   *p++ = '.'; *p++ = 'd'; *p++ = '2'; *p++ = 'v'; *p = 0;
   bool checking = true;

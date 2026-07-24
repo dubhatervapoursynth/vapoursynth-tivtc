@@ -95,8 +95,12 @@ struct OutputInfo {
 // PF 180131 uses usehints! but no problem, its runtime
 const VSFrameRef * TDecimate::GetFrameMode01(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
-    if (activationReason != arInitial && activationReason != arAllFramesReady)
+    if (activationReason != arInitial && activationReason != arAllFramesReady) {
+        // arError: nothing else will consume frameData, so release it here.
+        delete (const OutputInfo *)*frameData;
+        *frameData = nullptr;
         return nullptr;
+    }
 
   int EvalGroup;
   if (hybrid != 3) EvalGroup = ((int)(n / (cycle - cycleR))) * cycle;
@@ -362,7 +366,9 @@ const VSFrameRef * TDecimate::GetFrameMode01(int n, int activationReason, void *
         if (curr.decimate[y] == 1 && d1 == -20) d1 = y;
         else if (curr.decimate[y] == 1 && d2 == -20) { d2 = y; break; }
       }
-      if (curr.diffMetricsU[d1] > curr.diffMetricsU[d2]) d1 = d2;
+      // blend==3 normally means two frames are marked, but don't index with the -20 sentinel
+      // if fewer were found; leaving d1 at -20 simply protects no frame.
+      if (d1 != -20 && d2 != -20 && curr.diffMetricsU[d1] > curr.diffMetricsU[d2]) d1 = d2;
       for (jk = 0, y = curr.cycleS; y < curr.cycleE; ++y)
       {
         if (ret == jk && y != d1)
@@ -465,8 +471,8 @@ const VSFrameRef * TDecimate::GetFrameMode01(int n, int activationReason, void *
     int ret = curr.getNonDec(n % (cycle - cycleR));
     if (ret == -1)
     {
-      curr.debugOutput();
-      curr.debugMetrics(curr.length);
+      delete o;
+      *frameData = nullptr;
       vsapi->setFilterError("TDecimate:  major internal error. Couldn't figure out which frame to return. Please report this ASAP!", frameCtx);
       return nullptr;
     }
@@ -522,16 +528,16 @@ const VSFrameRef * TDecimate::GetFrameMode01(int n, int activationReason, void *
   }
 }
 
-void setBlack(VSFrameRef *dst, const VSAPI *vsapi)
+static void setBlack(VSFrameRef *dst, const VSAPI *vsapi)
 {
-    const VSFormat *format = vsapi->getFrameFormat(dst);
+  const VSFormat *format = vsapi->getFrameFormat(dst);
   const int np = format->numPlanes;
 
   for (int b = 0; b < np; ++b)
   {
     const int plane = b;
     uint8_t* dstp = vsapi->getWritePtr(dst, plane);
-    const int pitch = vsapi->getStride(dst, plane);
+    const size_t pitch = vsapi->getStride(dst, plane);
     const size_t height = vsapi->getFrameHeight(dst, plane);
 
     if (b == 0)
@@ -542,15 +548,19 @@ void setBlack(VSFrameRef *dst, const VSAPI *vsapi)
       if (bits_per_pixel == 8)
         memset(dstp, 128, pitch * height);
       else
-        std::fill_n((uint16_t*)dstp, pitch * height / sizeof(uint16_t), 128 << (bits_per_pixel - 8));
+        std::fill_n((uint16_t*)dstp, pitch * height / sizeof(uint16_t), (uint16_t)(128 << (bits_per_pixel - 8)));
     }
   }
 }
 
 const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
-  if (activationReason != arInitial && activationReason != arAllFramesReady)
+  if (activationReason != arInitial && activationReason != arAllFramesReady) {
+      // arError: nothing else will consume frameData, so release it here.
+      delete (const OutputInfo *)*frameData;
+      *frameData = nullptr;
       return nullptr;
+  }
 
   if (activationReason == arInitial) {
       for (int i = lastCycle - 1; i < lastCycle + (cycle * 4); i++)
@@ -795,62 +805,36 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
     mkvOutF = nullptr;
   }
 
-  if (retFrames <= -306 && se) {
-      vsapi->setFilterError("TDecimate:  mode 3 finished (early termination)!", frameCtx);
-      return nullptr;
-  }
-
-  if (retFrames <= -305)
+  // retFrames < 0 means the decimated output ran out before vi.numFrames did. The clip still
+  // advertises the source frame count, so every request past the end lands here and must produce
+  // a frame or an error -- returning nullptr with neither is a fatal API violation. (The old
+  // -305/-306 thresholds were unreachable: nothing ever decremented retFrames down to them.)
+  if (retFrames < 0)
   {
-      // I refuse to copy the text drawing code.
-
-      std::string last = "Mode 3:  Last Actual Frame = " + std::to_string(lastFrame);
-
-      VSPlugin *std_plugin = vsapi->getPluginById("com.vapoursynth.std", core);
-      VSPlugin *text_plugin = vsapi->getPluginById("com.vapoursynth.text", core);
-
-      VSMap *args = vsapi->createMap();
-      vsapi->propSetNode(args, "clip", clip2, paReplace);
-      VSMap *ret = vsapi->invoke(std_plugin, "BlankClip", args);
-      vsapi->clearMap(args);
-      if (vsapi->getError(ret)) {
-          std::string msg = "TDecimate: failed to invoke std.BlankClip to show this message: '" + last + "'. " + vsapi->getError(ret);
-          vsapi->setFilterError(msg.c_str(), frameCtx);
-          vsapi->freeMap(args);
-          vsapi->freeMap(ret);
-          return nullptr;
-      }
-      VSNodeRef *node = vsapi->propGetNode(ret, "clip", 0, nullptr);
-      vsapi->freeMap(ret);
-      vsapi->propSetNode(args, "clip", node, paReplace);
-      vsapi->freeNode(node);
-      node = nullptr;
-      vsapi->propSetData(args, "text", last.c_str(), last.size(), paReplace);
-      ret = vsapi->invoke(text_plugin, "Text", args);
-      vsapi->freeMap(args);
-      if (vsapi->getError(ret)) {
-          std::string msg = "TDecimate: failed to invoke text.Text to show this message: '" + last + "'. " + vsapi->getError(ret);
-          vsapi->setFilterError(msg.c_str(), frameCtx);
-          vsapi->freeMap(ret);
-          return nullptr;
-      }
-      node = vsapi->propGetNode(ret, "clip", 0, nullptr);
-      vsapi->freeMap(ret);
-
-      char error[160] = { 0 };
-      const VSFrameRef *dst = vsapi->getFrame(0, node, error, 160);
-      vsapi->freeNode(node);
-      if (dst == nullptr) {
-          std::string msg = "TDecimate: failed to generate the frame with this message: '" + last + "'. " + error;
-          vsapi->setFilterError(msg.c_str(), frameCtx);
+      if (se) {
+          vsapi->setFilterError("TDecimate:  mode 3 finished (early termination)!", frameCtx);
           return nullptr;
       }
 
-      --retFrames;
+      // Hand back a black frame carrying the notice as a frame property; display=True renders it.
+      // This used to invoke std.BlankClip + text.Text and pull frame 0 out of it with
+      // vsapi->getFrame(), which the API explicitly forbids from inside a filter's getFrame.
+      VSFrameRef *dst = vsapi->newVideoFrame(vi.format, vi.width, vi.height, nullptr, core);
+      setBlack(dst, vsapi);
+
+      const std::string last = "TDecimate " VERSION " by tritical\n"
+        "Mode 3:  Last Actual Frame = " + std::to_string(lastFrame) + "\n";
+
+      VSMap *props = vsapi->getFramePropsRW(dst);
+      vsapi->propSetData(props, PROP_TDecimateDisplay, last.c_str(), (int)last.size(), paReplace);
+      vsapi->propSetInt(props, PROP_DurationNum, vi.fpsDen, paReplace);
+      vsapi->propSetInt(props, PROP_DurationDen, vi.fpsNum, paReplace);
+
       return dst;
   }
 
-  return nullptr; // Should not be reachable.
+  vsapi->setFilterError("TDecimate:  mode 3 internal error (no frame produced). Please report this ASAP!", frameCtx);
+  return nullptr;
 }
 
 const VSFrameRef * TDecimate::GetFrameMode4(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
@@ -1264,6 +1248,21 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
     nxt = vsapi->newVideoFrame(vi_child->format, vi_child->width, vi_child->height, nullptr, core);
   }
 
+  // Single fetch path so every call site gets the null check, and so the frames held across the
+  // loop are released when one of them throws.
+  auto fetchFrame = [&](int frame_number) -> const VSFrameRef * {
+    const VSFrameRef *f;
+    if (frameCtx)
+      f = vsapi->getFrameFilter(frame_number, child, frameCtx);
+    else
+      f = vsapi->getFrame(frame_number, child, nullptr, 0);
+    if (f == nullptr)
+      throw TIVTCError("TDecimate:  failed to fetch a source frame during metric calculation!");
+    return f;
+  };
+
+  try {
+
   for (w = current.frameSO, i = current.cycleS; i < current.cycleE; ++i, ++w)
   {
     if ((current.match[i] != -20 || !hnt) && current.diffMetricsU[i] != UINT64_MAX &&
@@ -1278,41 +1277,27 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
           if (!usehints) current.match[i] = -200;
           else
           {
-              vsapi->freeFrame(nextt);
-            if (frameCtx)
-                nextt = vsapi->getFrameFilter(w, child, frameCtx);
-            else
-            {
-                nextt = vsapi->getFrame(w, child, nullptr, 0);
-                if (nextt == nullptr) throw TIVTCError("TDecimate:  failed to fetch a source frame during metric calculation!");
-            }
+            const VSFrameRef *tmp = fetchFrame(w);
+            vsapi->freeFrame(nextt);
+            nextt = tmp;
             next_num = w;
             current.match[i] = getTFMFrameProperties(nextt, current.filmd2v[i]);
           }
         }
         continue;
       }
-      
-      vsapi->freeFrame(prevt);
-      if (next_num == w - 1)
-        prevt = vsapi->cloneFrameRef(nextt);
-      else {
-          if (frameCtx)
-            prevt = vsapi->getFrameFilter(w > 0 ? w - 1 : 0, child, frameCtx);
-          else
-          {
-            prevt = vsapi->getFrame(w > 0 ? w - 1 : 0, child, nullptr, 0);
-            if (prevt == nullptr) throw TIVTCError("TDecimate:  failed to fetch a source frame during metric calculation!");
-          }
+
+      {
+        const VSFrameRef *tmp = (next_num == w - 1) ? vsapi->cloneFrameRef(nextt)
+                                                    : fetchFrame(w > 0 ? w - 1 : 0);
+        vsapi->freeFrame(prevt);
+        prevt = tmp;
       }
 
-      vsapi->freeFrame(nextt);
-      if (frameCtx)
-        nextt = vsapi->getFrameFilter(w, child, frameCtx);
-      else
       {
-        nextt = vsapi->getFrame(w, child, nullptr, 0);
-        if (nextt == nullptr) throw TIVTCError("TDecimate:  failed to fetch a source frame during metric calculation!");
+        const VSFrameRef *tmp = fetchFrame(w);
+        vsapi->freeFrame(nextt);
+        nextt = tmp;
       }
       next_num = w;
       if (current.match[i] == -20 && hnt)
@@ -1338,11 +1323,7 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
           if (!usehints) current.match[i] = -200;
           else
           {
-            const VSFrameRef *tmp;
-            if (frameCtx)
-                tmp = vsapi->getFrameFilter(w, child, frameCtx);
-            else
-                tmp = vsapi->getFrame(w, child, nullptr, 0);
+            const VSFrameRef *tmp = fetchFrame(w);
             vsapi->freeFrame(nxt);
             nxt = vsapi->copyFrame(tmp, core);
             vsapi->freeFrame(tmp);
@@ -1353,26 +1334,24 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
         continue;
       }
 
-      vsapi->freeFrame(prv);
-      if (next_num == w - 1) 
-        prv = vsapi->copyFrame(nxt, core);
+      if (next_num == w - 1)
+      {
+        VSFrameRef *copy = vsapi->copyFrame(nxt, core);
+        vsapi->freeFrame(prv);
+        prv = copy;
+      }
       else {
-        const VSFrameRef *tmp;
-        if (frameCtx)
-            tmp = vsapi->getFrameFilter(w > 0 ? w - 1 : 0, child, frameCtx);
-        else
-            tmp = vsapi->getFrame(w > 0 ? w - 1 : 0, child, nullptr, 0);
+        const VSFrameRef *tmp = fetchFrame(w > 0 ? w - 1 : 0);
+        vsapi->freeFrame(prv);
         prv = vsapi->copyFrame(tmp, core);
         vsapi->freeFrame(tmp);
       }
-      const VSFrameRef *tmp;
-      if (frameCtx)
-          tmp = vsapi->getFrameFilter(w, child, frameCtx);
-      else
-          tmp = vsapi->getFrame(w, child, nullptr, 0);
-      vsapi->freeFrame(nxt);
-      nxt = vsapi->copyFrame(tmp, core);
-      vsapi->freeFrame(tmp);
+      {
+        const VSFrameRef *tmp = fetchFrame(w);
+        vsapi->freeFrame(nxt);
+        nxt = vsapi->copyFrame(tmp, core);
+        vsapi->freeFrame(tmp);
+      }
       next_num = w;
       if (current.match[i] == -20 && hnt)
       {
@@ -1420,6 +1399,14 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
     }
     current.diffMetricsU[i] = highestDiff;
     current.diffMetricsN[i] = (highestDiff * 100.0) / MAX_DIFF;
+  }
+
+  } catch (...) {
+    vsapi->freeFrame(prevt);
+    vsapi->freeFrame(nextt);
+    vsapi->freeFrame(prv);
+    vsapi->freeFrame(nxt);
+    throw;
   }
 
   vsapi->freeFrame(prevt);
@@ -1795,7 +1782,9 @@ void TDecimate::mostSimilarDecDecision(Cycle &p, Cycle &c, Cycle &n)
     }
   tryother:
     int savedc = -1;
-    uint64_t metricP, metricN, metricPt, metricNt;
+    // metricP/metricN are only read once savedc != -1, i.e. after they have been assigned, but
+    // initialize them so that invariant doesn't have to hold for the code to be well defined.
+    uint64_t metricP = 0, metricN = 0, metricPt, metricNt;
     for (v = 0, i = c.cycleS; i < c.cycleE; ++i)
     {
       if (c.dupArray[i] == 1)
@@ -3042,7 +3031,12 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
   {
     if ((f = tivtc_fopen(output.c_str(), "w")) != nullptr)
     {
-      _fullpath(outputFull, output.c_str(), MAX_PATH);
+      if (_fullpath(outputFull, output.c_str(), MAX_PATH) == nullptr)
+      {
+        fclose(f);
+        f = nullptr;
+        throw TIVTCError("TDecimate:  output error (could not resolve the full path)!");
+      }
       calcCRC(child, 15, outputCrc, vsapi);
       fclose(f);
       f = nullptr;
@@ -3079,7 +3073,12 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
             while (*linet != ' ') linet++;
             linet++;
             unsigned int z, tempCrc;
-            sscanf(linet, "%x", &z);
+            if (sscanf(linet, "%x", &z) != 1)
+            {
+              fclose(f);
+              f = nullptr;
+              throw TIVTCError("TDecimate:  input error (malformed crc32 line)!");
+            }
             calcCRC(child, 15, tempCrc, vsapi);
             if (tempCrc != z && !batch)
             {
@@ -3091,7 +3090,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
               throw TIVTCError(msg);
             }
             linep = linein;
-            while (*linep != ',' && linep != 0) linep++;
+            while (*linep != ',' && *linep != 0) linep++;
             if (*linep == 0) continue;
             linep++; linep++;
             int j;
@@ -3099,7 +3098,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
             {
               while (*linep != '=') linep++;
               linep++; linep++;
-              sscanf(linep, "%d", &j);
+              if (sscanf(linep, "%d", &j) != 1) continue;
               if (j != blockx)
               {
                 fclose(f);
@@ -3119,7 +3118,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
             {
               while (*linep != '=') linep++;
               linep++; linep++;
-              sscanf(linep, "%d", &j);
+              if (sscanf(linep, "%d", &j) != 1) continue;
               if (j != blocky)
               {
                 fclose(f);
@@ -3144,7 +3143,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
             {
               while (*linep != '=') linep++;
               linep++; linep++;
-              sscanf(linep, "%c", &ch);
+              if (sscanf(linep, "%c", &ch) != 1) continue;
               if (((ch == 'T' || ch == 't') && !chroma) || ((ch == 'F' || ch == 'f') && chroma))
               {
                 fclose(f);
@@ -3157,7 +3156,9 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
         }
         else if (*linep == ' ' && *(linep + 1) != 0 && *(linep + 1) != ' ')
         {
-          sscanf(linein, "%d %" PRIu64 " %" PRIu64 "", &w, &metricU, &metricF);
+          // A short/garbled line would otherwise store uninitialised values as metrics.
+          if (sscanf(linein, "%d %" PRIu64 " %" PRIu64 "", &w, &metricU, &metricF) != 3)
+            continue;
           if (w < 0 || w > nfrms)
           {
             fclose(f);
@@ -3227,6 +3228,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
           linep++;
           if (*linep == '-' || *linep == '+')
           {
+            z = -1; // a failed parse must fail the range check below
             sscanf(linein, "%d", &z);
             if (z<0 || z>nfrms)
             {
@@ -3254,6 +3256,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
           }
           else if (*linep == 'f' || *linep == 'v')
           {
+            z = -1; // a failed parse must fail the range check below
             sscanf(linein, "%d", &z);
             if (z<0 || z>nfrms)
             {
@@ -3287,6 +3290,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
           linep++;
           if (*linep == 'f' || *linep == 'v')
           {
+            z = -1; w = -1; // ditto, and a partial parse must not leave a stale range end
             sscanf(linein, "%d,%d", &z, &w);
             if (w == 0) w = nfrms;
             if (z<0 || z>nfrms || w<0 || w>nfrms || w < z)
@@ -3319,6 +3323,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
           }
           else if (*linep == '-' || *linep == '+')
           {
+            z = -1; w = -1; // ditto, and a partial parse must not leave a stale range end
             sscanf(linein, "%d,%d", &z, &w);
             if (w == 0) w = nfrms;
             if (z<0 || z>nfrms || w<0 || w>nfrms || w < z)
@@ -3419,6 +3424,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
             linet++;
           }
           if (*linet == 0) { --firstLine; continue; }
+          z = -1; // a failed parse must fail the range check below
           sscanf(linein, "%d", &z);
           linep = linein;
           while (*linep != 'p' && *linep != 'c' && *linep != 'n' && *linep != 'u' &&
@@ -3538,7 +3544,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
   {
     if (hybrid != 3)
     {
-      vi.numFrames = (vi.numFrames * (cycle - cycleR)) / cycle;
+      vi.numFrames = (int)(((int64_t)vi.numFrames * (cycle - cycleR)) / cycle);
       nfrmsN = vi.numFrames - 1;
       muldivRational(&vi.fpsNum, &vi.fpsDen, cycle - cycleR, cycle);
     }
@@ -3632,7 +3638,9 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
   {
     std::vector<int> input_magic_numbers(vi.numFrames, 0);
 
-    int j = 0, k = 0, frm = 0, dups, frameDen;
+    // frameDen is carried over between iterations of the outer loop, so give it the mode 6 base
+    // rate rather than leaving the first use dependent on the dups chain covering every value.
+    int j = 0, k = 0, frm = 0, dups, frameDen = 24000;
     double timestamp = 0.0;
     int lastt = 0, lastf = 0;
     if ((f = tivtc_fopen(mkvOut.c_str(), "w")) == nullptr)

@@ -61,6 +61,7 @@ class Cycle
 {
 private:
   int cycleSize;
+  void freeSpace();
   bool allocSpace();
   bool checkMatchDup(int mp, int mc);
 
@@ -106,8 +107,6 @@ public:
   int sceneDetect(Cycle &prev, Cycle &next, uint64_t thresh);
   int getNonDec(int n);
   void clearAll();
-  void debugOutput();
-  void debugMetrics(int length);
 
   Cycle(int _size, int _sdlim);
   void setSize(int _size);

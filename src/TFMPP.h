@@ -58,7 +58,6 @@ private:
   std::string ovr;
   bool display;
   VSNodeRef *clip2;
-  bool usehints;
   int opt;
   bool uC2; // use clip2
   int PP_origSaved;

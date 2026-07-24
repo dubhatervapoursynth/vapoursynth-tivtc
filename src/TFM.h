@@ -56,7 +56,6 @@ struct MTRACK {
 
 struct SCTRACK {
   int frame;
-  unsigned long diff;
   bool sc;
 };
 
@@ -100,7 +99,11 @@ private:
   int xhalf, yhalf, xshift, yshift;
   int vidCount, fieldO, mode7_field; // mode7_field modified in GetFrame, but only when mode is 7
   uint32_t outputCrc;
-  unsigned long diffmaxsc;
+  uint64_t diffmaxsc;
+  // True when the filter is registered with nfMakeLinear, i.e. when GetFrame is guaranteed to
+  // see frames in order. Only then may state carried from the previously processed frame
+  // (lastMatch) influence the result, otherwise the output depends on request scheduling.
+  bool linearAccess;
   
   std::unique_ptr<int, decltype (&vs_aligned_free)> cArray; // modified in GetFrame
   std::vector<int> setArray;
@@ -181,7 +184,7 @@ private:
   int D2V_check_final(const std::vector<int> &array) const;
   int D2V_initialize_array(std::vector<int> &array, int &d2vtype, int &frames) const;
   int D2V_write_array(const std::vector<int> &array, char wfile[]) const;
-  int D2V_get_output_filename(char wfile[]) const;
+  int D2V_get_output_filename(char *wfile, size_t wfile_size) const;
   int D2V_fill_d2vfilmarray(const std::vector<int> &array, int frames);
   bool d2vduplicate(int match, int combed, int n);
   bool checkD2VCase(int check) const;
