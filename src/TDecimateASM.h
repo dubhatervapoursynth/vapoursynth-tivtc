@@ -27,7 +27,7 @@
 #define __TDECIMATEASM_H__
 
 //#include <windows.h>
-#include <VapourSynth.h>
+#include <VapourSynth4.h>
 #include "internal.h"
 #include "TDecimate.h"
 
@@ -45,20 +45,20 @@ template<typename pixel_t, bool SAD, int inc>
 void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
   int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 
-void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, CalcMetricData& d, VSCore *core, const VSAPI *vsapi);
+void CalcMetricsExtracted(const VSFrame *prevt, const VSFrame *currt, CalcMetricData& d, VSCore *core, const VSAPI *vsapi);
 
 template<typename pixel_t>
 void HorizontalBlur_Planar_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
   int dst_pitch, int width, int height, bool allow_leftminus1);
 
-void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
+void HorizontalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
   const VSAPI *vsapi);
 
 template<typename pixel_t>
 void VerticalBlur_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
   int dst_pitch, int width, int height);
 
-void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma, const VSAPI *vsapi);
+void VerticalBlur(const VSFrame *src, VSFrame *dst, bool bchroma, const VSAPI *vsapi);
 
 
 // handles 50% special case as well

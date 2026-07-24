@@ -27,7 +27,7 @@
 #include <algorithm>
 
 
-const VSFrameRef * TDecimate::GetFrameMode2(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame * TDecimate::GetFrameMode2(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
     if (activationReason != arInitial && activationReason != arAllFramesReady)
         return nullptr;
@@ -130,11 +130,11 @@ const VSFrameRef * TDecimate::GetFrameMode2(int n, int activationReason, void **
 //    OutputDebugString(buf);
 //  }
 
-  const VSFrameRef *src = vsapi->getFrameFilter(ret, clip2, frameCtx);
+  const VSFrame *src = vsapi->getFrameFilter(ret, clip2, frameCtx);
 
   if (display)
   {
-    VSFrameRef *dst = vsapi->copyFrame(src, core);
+    VSFrame *dst = vsapi->copyFrame(src, core);
     vsapi->freeFrame(src);
 
 #define SZ 160
@@ -148,8 +148,8 @@ const VSFrameRef * TDecimate::GetFrameMode2(int n, int activationReason, void **
     text += buf;
 #undef SZ
 
-    VSMap *props = vsapi->getFramePropsRW(dst);
-    vsapi->propSetData(props, PROP_TDecimateDisplay, text.c_str(), text.size(), paReplace);
+    VSMap *props = vsapi->getFramePropertiesRW(dst);
+    vsapi->mapSetData(props, PROP_TDecimateDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
 
     return dst;
   }

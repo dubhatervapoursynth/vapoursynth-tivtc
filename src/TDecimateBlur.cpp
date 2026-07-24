@@ -27,14 +27,14 @@
 #include "TDecimateASM.h"
 
 // hbd ready
-void blurFrame(const VSFrameRef *src, VSFrameRef *dst, int iterations,
+void blurFrame(const VSFrame *src, VSFrame *dst, int iterations,
   bool bchroma, VSCore *core, const VSAPI *vsapi)
 {
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
     int width = vsapi->getFrameWidth(src, 0);
     int height = vsapi->getFrameHeight(src, 0);
 
-  VSFrameRef *tmp = vsapi->newVideoFrame(format, width, height, nullptr, core);
+  VSFrame *tmp = vsapi->newVideoFrame(format, width, height, nullptr, core);
   HorizontalBlur(src, tmp, bchroma, vsapi);
   VerticalBlur(tmp, dst, bchroma, vsapi);
   for (int i = 1; i < iterations; ++i)
@@ -45,10 +45,10 @@ void blurFrame(const VSFrameRef *src, VSFrameRef *dst, int iterations,
   vsapi->freeFrame(tmp);
 }
 
-void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
+void HorizontalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
   const VSAPI *vsapi)
 {
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
 
   const int np = !bchroma ? 1 : format->numPlanes;
 
@@ -59,11 +59,11 @@ void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
   {
     const int plane = b;
     const uint8_t *srcp = vsapi->getReadPtr(src, plane);
-    int src_pitch = vsapi->getStride(src, plane);
+    int src_pitch = (int)(vsapi->getStride(src, plane));
     int width = vsapi->getFrameWidth(src, plane);
     int height = vsapi->getFrameHeight(src, plane);
     uint8_t *dstp = vsapi->getWritePtr(dst, plane);
-    int dst_pitch = vsapi->getStride(dst, plane);
+    int dst_pitch = (int)(vsapi->getStride(dst, plane));
 
       if(pixelsize == 1)
         HorizontalBlur_Planar_c<uint8_t>(srcp, dstp, src_pitch, dst_pitch, width, height, false);
@@ -107,10 +107,10 @@ void VerticalBlur_c(const uint8_t* srcp0, uint8_t* dstp0, int src_pitch,
     dstp[x] = (srcpp[x] + srcp[x] + 1) >> 1;
 }
 
-void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
+void VerticalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
   const VSAPI *vsapi)
 {
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
 
   const int np = !bchroma ? 1 : format->numPlanes;
 
@@ -121,11 +121,11 @@ void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
   {
     const int plane = b;
     const uint8_t* srcp = vsapi->getReadPtr(src, plane);
-    int src_pitch = vsapi->getStride(src, plane);
+    int src_pitch = (int)(vsapi->getStride(src, plane));
     int width = vsapi->getFrameWidth(src, plane);
     int height = vsapi->getFrameHeight(src, plane);
     uint8_t* dstp = vsapi->getWritePtr(dst, plane);
-    int dst_pitch = vsapi->getStride(dst, plane);
+    int dst_pitch = (int)(vsapi->getStride(dst, plane));
 
       if(pixelsize == 1)
         VerticalBlur_c<uint8_t>(srcp, dstp, src_pitch, dst_pitch, width, height);

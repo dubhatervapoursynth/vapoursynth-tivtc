@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 #include <math.h>
-#include <VapourSynth.h>
+#include <VapourSynth4.h>
 #ifdef VERSION
 #undef VERSION
 #endif
@@ -51,74 +51,74 @@ class TFMPP
 {
 private:
     const VSAPI *vsapi;
-    VSNodeRef *child;
+    VSNode *child;
 
 
   int PP, mthresh;
   std::string ovr;
   bool display;
-  VSNodeRef *clip2;
+  VSNode *clip2;
   int opt;
   bool uC2; // use clip2
   int PP_origSaved;
   int mthresh_origSaved;
   int nfrms;
   std::vector<int> setArray;
-  VSFrameRef *mmask;
+  VSFrame *mmask;
 
-  void buildMotionMask(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt,
-    VSFrameRef *mask, int use) const;
+  void buildMotionMask(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt,
+    VSFrame *mask, int use) const;
   template<typename pixel_t>
-  void buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt,
-    VSFrameRef* mask, int use) const;
-  void maskClip2(const VSFrameRef *src, const VSFrameRef *deint, const VSFrameRef *mask,
-    VSFrameRef *dst) const;
+  void buildMotionMask_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt,
+    VSFrame* mask, int use) const;
+  void maskClip2(const VSFrame *src, const VSFrame *deint, const VSFrame *mask,
+    VSFrame *dst) const;
 
-//  void putHint(VSFrameRef *dst, int field, unsigned int hint);
+//  void putHint(VSFrame *dst, int field, unsigned int hint);
 //  template<typename pixel_t>
-//  void putHint_core(VSFrameRef *dst, int field, unsigned int hint);
-  void getProperties(const VSFrameRef *src, int& field, bool& combed) const;
+//  void putHint_core(VSFrame *dst, int field, unsigned int hint);
+  void getProperties(const VSFrame *src, int& field, bool& combed) const;
 //  template<typename pixel_t>
-//  bool getHint_core(const VSFrameRef *src, int& field, bool& combed, unsigned int& hint);
+//  bool getHint_core(const VSFrame *src, int& field, bool& combed, unsigned int& hint);
 
   void getSetOvr(int n);
   int getEffectivePP(int n) const; // effective PP for frame n (base + P overrides), no side effects
 
-  void denoisePlanar(VSFrameRef *mask) const;
+  void denoisePlanar(VSFrame *mask) const;
 
   template<int planarType>
-  void linkPlanar(VSFrameRef *mask) const;
+  void linkPlanar(VSFrame *mask) const;
 
-//  void destroyHint(VSFrameRef *dst, unsigned int hint);
+//  void destroyHint(VSFrame *dst, unsigned int hint);
 //  template<typename pixel_t>
-//  void destroyHint_core(VSFrameRef *dst, unsigned int hint);
+//  void destroyHint_core(VSFrame *dst, unsigned int hint);
 
-  void BlendDeint(const VSFrameRef *src, const VSFrameRef *mask, VSFrameRef *dst,
+  void BlendDeint(const VSFrame *src, const VSFrame *mask, VSFrame *dst,
     bool nomask) const;
   template<typename pixel_t>
-  void BlendDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFrameRef *dst,
+  void BlendDeint_core(const VSFrame *src, const VSFrame* mask, VSFrame *dst,
     bool nomask) const;
 
-  void CubicDeint(const VSFrameRef *src, const VSFrameRef *mask, VSFrameRef *dst, bool nomask,
+  void CubicDeint(const VSFrame *src, const VSFrame *mask, VSFrame *dst, bool nomask,
     int field) const;
   template<typename pixel_t, int bits_per_pixel>
-  void CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFrameRef *dst, bool nomask,
+  void CubicDeint_core(const VSFrame *src, const VSFrame* mask, VSFrame *dst, bool nomask,
     int field) const;
 
-  void elaDeint(VSFrameRef *dst, const VSFrameRef *mask, const VSFrameRef *src, bool nomask, int field) const;
+  void elaDeint(VSFrame *dst, const VSFrame *mask, const VSFrame *src, bool nomask, int field) const;
   // not the same as in tdeinterlace.
   template<typename pixel_t, int bits_per_pixel>
-  void elaDeintPlanar(VSFrameRef *dst, const VSFrameRef *mask, const VSFrameRef *src, bool nomask, int field) const;
+  void elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src, bool nomask, int field) const;
 
-  void copyField(VSFrameRef *dst, const VSFrameRef *src, int field) const;
+  void copyField(VSFrame *dst, const VSFrame *src, int field) const;
 
-  void writeDisplay(VSFrameRef *dst, int n, int field) const;
+  void writeDisplay(VSFrame *dst, int n, int field) const;
 
 public:
   const VSVideoInfo *vi;
 
-  const VSFrameRef *GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
-  TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _display, VSNodeRef *_clip2,
+  const VSFrame *GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
+  TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _display, VSNode *_clip2,
     bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core);
   ~TFMPP();
 };

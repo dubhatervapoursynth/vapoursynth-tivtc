@@ -30,12 +30,12 @@
 #include <inttypes.h>
 #include <algorithm>
 
-const VSFrameRef *TDecimate::GetFrame(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame *TDecimate::GetFrame(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
   if (n < 0) n = 0;
   else if (n > nfrmsN) n = nfrmsN;
 
-  const VSFrameRef * dst = nullptr;
+  const VSFrame * dst = nullptr;
 
   try {
       if (mode < 2) dst = GetFrameMode01(n, activationReason, frameData, frameCtx, core);     // most similar/longest string
@@ -82,7 +82,7 @@ struct OutputInfo {
         film = _film;
     }
 
-    void requestFrames(VSNodeRef *clip, VSFrameContext *frameCtx, const VSAPI *vsapi) {
+    void requestFrames(VSNode *clip, VSFrameContext *frameCtx, const VSAPI *vsapi) {
         vsapi->requestFrameFilter(f1, clip, frameCtx);
 
         if (type == TwoFramesBlended)
@@ -93,7 +93,7 @@ struct OutputInfo {
 
 
 // PF 180131 uses usehints! but no problem, its runtime
-const VSFrameRef * TDecimate::GetFrameMode01(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame * TDecimate::GetFrameMode01(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
     if (activationReason != arInitial && activationReason != arAllFramesReady) {
         // arError: nothing else will consume frameData, so release it here.
@@ -117,14 +117,14 @@ const VSFrameRef * TDecimate::GetFrameMode01(int n, int activationReason, void *
   } else if (activationReason == arAllFramesReady && *frameData != nullptr) {
       const OutputInfo *o = (const OutputInfo *)*frameData;
 
-      VSFrameRef *dst = nullptr;
-      const VSFrameRef *frame1 = vsapi->getFrameFilter(o->f1, clip2, frameCtx);
+      VSFrame *dst = nullptr;
+      const VSFrame *frame1 = vsapi->getFrameFilter(o->f1, clip2, frameCtx);
 
       if (o->type == SingleFrame) {
           dst = vsapi->copyFrame(frame1, core);
       } else if (o->type == TwoFramesBlended) {
-          const VSFrameRef *frame2 = vsapi->getFrameFilter(o->f2, clip2, frameCtx);
-          dst = vsapi->newVideoFrame(vi_clip2->format, vi_clip2->width, vi_clip2->height, frame1, core);
+          const VSFrame *frame2 = vsapi->getFrameFilter(o->f2, clip2, frameCtx);
+          dst = vsapi->newVideoFrame(&vi_clip2->format, vi_clip2->width, vi_clip2->height, frame1, core);
           blendFrames(frame1, frame2, dst, o->a1);
           vsapi->freeFrame(frame2);
       }
@@ -133,16 +133,16 @@ const VSFrameRef * TDecimate::GetFrameMode01(int n, int activationReason, void *
       if (display)
           displayOutput(dst, o->requested_frame_number, o->chosen_frame_number, o->film, o->a1, o->a2, o->f1, o->f2);
 
-      VSMap *props = vsapi->getFramePropsRW(dst);
+      VSMap *props = vsapi->getFramePropertiesRW(dst);
 
       if (first_frame_in_cycle) {
-        vsapi->propSetInt(props, PROP_TDecimateCycleStart, EvalGroup, paReplace);
-        vsapi->propSetIntArray(props, PROP_TDecimateCycleMaxBlockDiff, (const int64_t *)o->metrics.data(), cycle);
+        vsapi->mapSetInt(props, PROP_TDecimateCycleStart, EvalGroup, maReplace);
+        vsapi->mapSetIntArray(props, PROP_TDecimateCycleMaxBlockDiff, (const int64_t *)o->metrics.data(), cycle);
       }
-      vsapi->propSetInt(props, PROP_TDecimateOriginalFrame, o->f1, paReplace);
+      vsapi->mapSetInt(props, PROP_TDecimateOriginalFrame, o->f1, maReplace);
 
-      vsapi->propSetInt(props, PROP_DurationNum, vi.fpsDen, paReplace);
-      vsapi->propSetInt(props, PROP_DurationDen, vi.fpsNum, paReplace);
+      vsapi->mapSetInt(props, PROP_DurationNum, vi.fpsDen, maReplace);
+      vsapi->mapSetInt(props, PROP_DurationDen, vi.fpsNum, maReplace);
 
       delete o;
 
@@ -528,9 +528,9 @@ const VSFrameRef * TDecimate::GetFrameMode01(int n, int activationReason, void *
   }
 }
 
-static void setBlack(VSFrameRef *dst, const VSAPI *vsapi)
+static void setBlack(VSFrame *dst, const VSAPI *vsapi)
 {
-  const VSFormat *format = vsapi->getFrameFormat(dst);
+  const VSVideoFormat *format = vsapi->getVideoFrameFormat(dst);
   const int np = format->numPlanes;
 
   for (int b = 0; b < np; ++b)
@@ -553,7 +553,7 @@ static void setBlack(VSFrameRef *dst, const VSAPI *vsapi)
   }
 }
 
-const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame * TDecimate::GetFrameMode3(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
   if (activationReason != arInitial && activationReason != arAllFramesReady) {
       // arError: nothing else will consume frameData, so release it here.
@@ -570,14 +570,14 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
   } else if (activationReason == arAllFramesReady && *frameData != nullptr) {
       const OutputInfo *o = (const OutputInfo *)*frameData;
 
-      VSFrameRef *dst = nullptr;
-      const VSFrameRef *frame1 = vsapi->getFrameFilter(o->f1, clip2, frameCtx);
+      VSFrame *dst = nullptr;
+      const VSFrame *frame1 = vsapi->getFrameFilter(o->f1, clip2, frameCtx);
 
       if (o->type == SingleFrame) {
           dst = vsapi->copyFrame(frame1, core);
       } else if (o->type == TwoFramesBlended) {
-          const VSFrameRef *frame2 = vsapi->getFrameFilter(o->f2, clip2, frameCtx);
-          dst = vsapi->newVideoFrame(vi_clip2->format, vi_clip2->width, vi_clip2->height, frame1, core);
+          const VSFrame *frame2 = vsapi->getFrameFilter(o->f2, clip2, frameCtx);
+          dst = vsapi->newVideoFrame(&vi_clip2->format, vi_clip2->width, vi_clip2->height, frame1, core);
           blendFrames(frame1, frame2, dst, o->a1);
           vsapi->freeFrame(frame2);
       }
@@ -595,13 +595,13 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
           if (curr.blend == 3)
               div--;
 
-          muldivRational(&duration_num, &duration_den, mul, div);
+          vsh::muldivRational(&duration_num, &duration_den, mul, div);
       }
 
-      VSMap *props = vsapi->getFramePropsRW(dst);
+      VSMap *props = vsapi->getFramePropertiesRW(dst);
 
-      vsapi->propSetInt(props, PROP_DurationNum, duration_num, paReplace);
-      vsapi->propSetInt(props, PROP_DurationDen, duration_den, paReplace);
+      vsapi->mapSetInt(props, PROP_DurationNum, duration_num, maReplace);
+      vsapi->mapSetInt(props, PROP_DurationDen, duration_den, maReplace);
 
       delete o;
 
@@ -819,16 +819,16 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
       // Hand back a black frame carrying the notice as a frame property; display=True renders it.
       // This used to invoke std.BlankClip + text.Text and pull frame 0 out of it with
       // vsapi->getFrame(), which the API explicitly forbids from inside a filter's getFrame.
-      VSFrameRef *dst = vsapi->newVideoFrame(vi.format, vi.width, vi.height, nullptr, core);
+      VSFrame *dst = vsapi->newVideoFrame(&vi.format, vi.width, vi.height, nullptr, core);
       setBlack(dst, vsapi);
 
       const std::string last = "TDecimate " VERSION " by tritical\n"
         "Mode 3:  Last Actual Frame = " + std::to_string(lastFrame) + "\n";
 
-      VSMap *props = vsapi->getFramePropsRW(dst);
-      vsapi->propSetData(props, PROP_TDecimateDisplay, last.c_str(), (int)last.size(), paReplace);
-      vsapi->propSetInt(props, PROP_DurationNum, vi.fpsDen, paReplace);
-      vsapi->propSetInt(props, PROP_DurationDen, vi.fpsNum, paReplace);
+      VSMap *props = vsapi->getFramePropertiesRW(dst);
+      vsapi->mapSetData(props, PROP_TDecimateDisplay, last.c_str(), (int)last.size(), dtUtf8, maReplace);
+      vsapi->mapSetInt(props, PROP_DurationNum, vi.fpsDen, maReplace);
+      vsapi->mapSetInt(props, PROP_DurationDen, vi.fpsNum, maReplace);
 
       return dst;
   }
@@ -837,7 +837,7 @@ const VSFrameRef * TDecimate::GetFrameMode3(int n, int activationReason, void **
   return nullptr;
 }
 
-const VSFrameRef * TDecimate::GetFrameMode4(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame * TDecimate::GetFrameMode4(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
 {
   if (activationReason == arInitial) {
       vsapi->requestFrameFilter(n > 0 ? n - 1 : 0, child, frameCtx);
@@ -850,8 +850,8 @@ const VSFrameRef * TDecimate::GetFrameMode4(int n, int activationReason, VSFrame
       return nullptr;
   }
 
-  const VSFrameRef * prv = vsapi->getFrameFilter(n > 0 ? n - 1 : 0, child, frameCtx);
-  const VSFrameRef * src = vsapi->getFrameFilter(n, child, frameCtx);
+  const VSFrame * prv = vsapi->getFrameFilter(n > 0 ? n - 1 : 0, child, frameCtx);
+  const VSFrame * src = vsapi->getFrameFilter(n, child, frameCtx);
   int blockN = -20, xblocks;
   uint64_t metricU = UINT64_MAX, metricF = UINT64_MAX;
   getOvrFrame(n, metricU, metricF);
@@ -876,10 +876,10 @@ const VSFrameRef * TDecimate::GetFrameMode4(int n, int activationReason, VSFrame
   vsapi->freeFrame(src);
   src = vsapi->getFrameFilter(n, clip2, frameCtx);
 
-  VSFrameRef *dst = vsapi->copyFrame(src, core);
+  VSFrame *dst = vsapi->copyFrame(src, core);
   vsapi->freeFrame(src);
 
-  VSMap *props = vsapi->getFramePropsRW(dst);
+  VSMap *props = vsapi->getFramePropertiesRW(dst);
 
   if (display)
   {
@@ -898,20 +898,20 @@ const VSFrameRef * TDecimate::GetFrameMode4(int n, int activationReason, VSFrame
     text += buf;
 #undef SZ
 
-      vsapi->propSetData(props, PROP_TDecimateDisplay, text.c_str(), text.size(), paReplace);
+      vsapi->mapSetData(props, PROP_TDecimateDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
   }
   return dst;
 }
 
-const VSFrameRef * TDecimate::GetFrameMode56(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame * TDecimate::GetFrameMode56(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
 {
   int frame = aLUT[n];
   // frame_duration_info is fully populated at construction and only read here; use find()
   // (a const lookup) rather than operator[] so concurrent mode-5/6 GetFrame calls under
   // fmParallel don't race on a map insertion.
   auto durIt = frame_duration_info.find(frame);
-  int durNum = durIt != frame_duration_info.end() ? durIt->second.first : 0;
-  int durDen = durIt != frame_duration_info.end() ? durIt->second.second : 0;
+  int64_t durNum = durIt != frame_duration_info.end() ? durIt->second.first : 0;
+  int64_t durDen = durIt != frame_duration_info.end() ? durIt->second.second : 0;
 
   if (activationReason == arInitial) {
       vsapi->requestFrameFilter(frame, clip2, frameCtx);
@@ -921,7 +921,7 @@ const VSFrameRef * TDecimate::GetFrameMode56(int n, int activationReason, VSFram
       return nullptr;
   }
 
-  const VSFrameRef *src = vsapi->getFrameFilter(frame, clip2, frameCtx);
+  const VSFrame *src = vsapi->getFrameFilter(frame, clip2, frameCtx);
 
 //  if (debug)
 //  {
@@ -929,9 +929,9 @@ const VSFrameRef * TDecimate::GetFrameMode56(int n, int activationReason, VSFram
 //    OutputDebugString(buf);
 //  }
 
-  VSFrameRef *dst = vsapi->copyFrame(src, core);
+  VSFrame *dst = vsapi->copyFrame(src, core);
   vsapi->freeFrame(src);
-  VSMap *props = vsapi->getFramePropsRW(dst);
+  VSMap *props = vsapi->getFramePropertiesRW(dst);
 
   if (display)
   {
@@ -948,11 +948,11 @@ const VSFrameRef * TDecimate::GetFrameMode56(int n, int activationReason, VSFram
     snprintf(buf, SZ, "inframe = %d  useframe = %d\n", n, frame);
     text += buf;
 #undef SZ
-    vsapi->propSetData(props, PROP_TDecimateDisplay, text.c_str(), text.size(), paReplace);
+    vsapi->mapSetData(props, PROP_TDecimateDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
   }
 
-  vsapi->propSetInt(props, PROP_DurationNum, durNum, paReplace);
-  vsapi->propSetInt(props, PROP_DurationDen, durDen, paReplace);
+  vsapi->mapSetInt(props, PROP_DurationNum, durNum, maReplace);
+  vsapi->mapSetInt(props, PROP_DurationDen, durDen, maReplace);
 
   return dst;
 }
@@ -1058,12 +1058,12 @@ void TDecimate::calcMetricPreBuf(int n1, int n2, int pos, const VSVideoInfo *vit
   if (n2 == 0) n1 = 0;
   int blockNI, xblocksI;
   uint64_t metricF;
-  const VSFrameRef *src = nullptr;
+  const VSFrame *src = nullptr;
   if (nbuf.diffMetricsU[pos] == UINT64_MAX ||
     (nbuf.diffMetricsUF[pos] == UINT64_MAX && scene))
   {
     src = vsapi->getFrameFilter(n2, child, frameCtx);
-    const VSFrameRef *frame = vsapi->getFrameFilter(n1, child, frameCtx);
+    const VSFrame *frame = vsapi->getFrameFilter(n1, child, frameCtx);
     nbuf.diffMetricsU[pos] = calcMetric(frame, src, vit, blockNI, xblocksI, metricF, scene, core);
     vsapi->freeFrame(frame);
     nbuf.diffMetricsN[pos] = (nbuf.diffMetricsU[pos] * 100.0) / MAX_DIFF;
@@ -1084,14 +1084,14 @@ void TDecimate::calcMetricPreBuf(int n1, int n2, int pos, const VSVideoInfo *vit
   vsapi->freeFrame(src);
 }
 
-void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, CalcMetricData& d, VSCore *core, const VSAPI *vsapi)
+void CalcMetricsExtracted(const VSFrame *prevt, const VSFrame *currt, CalcMetricData& d, VSCore *core, const VSAPI *vsapi)
 {
-  VSFrameRef *prev = nullptr, *curr = nullptr;
+  VSFrame *prev = nullptr, *curr = nullptr;
 
   if (d.predenoise)
   {
-    prev = vsapi->newVideoFrame(d.vi.format, d.vi.width, d.vi.height, nullptr, core);
-    curr = vsapi->newVideoFrame(d.vi.format, d.vi.width, d.vi.height, nullptr, core);
+    prev = vsapi->newVideoFrame(&d.vi.format, d.vi.width, d.vi.height, nullptr, core);
+    curr = vsapi->newVideoFrame(&d.vi.format, d.vi.width, d.vi.height, nullptr, core);
     blurFrame(prevt, prev, 2, d.chroma, core, vsapi);
     blurFrame(currt, curr, 2, d.chroma, core, vsapi);
   }
@@ -1114,19 +1114,19 @@ void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, Calc
 
   memset(d.diff, 0, arraysize * sizeof(uint64_t));
 
-  const int stop = !d.chroma ? 1 : d.vi.format->numPlanes; // luma only (!chroma) only 1 planar planes
+  const int stop = !d.chroma ? 1 : d.vi.format.numPlanes; // luma only (!chroma) only 1 planar planes
 
-  const int pixelsize = d.vi.format->bytesPerSample;
+  const int pixelsize = d.vi.format.bytesPerSample;
 
   for (int b = 0; b < stop; ++b)
   {
     const int plane = b;
     prvp = vsapi->getReadPtr(prev, plane);
-    prv_pitch = vsapi->getStride(prev, plane) / pixelsize;
+    prv_pitch = (int)(vsapi->getStride(prev, plane) / pixelsize);
     width = vsapi->getFrameWidth(prev, plane);
     height = vsapi->getFrameHeight(prev, plane);
     curp = vsapi->getReadPtr(curr, plane);
-    cur_pitch = vsapi->getStride(curr, plane) / pixelsize;
+    cur_pitch = (int)(vsapi->getStride(curr, plane) / pixelsize);
 
     // sum is gathered in uint64_t diff
     // diff[] entries are normalized back to 8 bit
@@ -1178,7 +1178,7 @@ void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, Calc
   vsapi->freeFrame(curr);
 }
 
-uint64_t TDecimate::calcMetric(const VSFrameRef *prevt, const VSFrameRef *currt, const VSVideoInfo *vit, int &blockNI,
+uint64_t TDecimate::calcMetric(const VSFrame *prevt, const VSFrame *currt, const VSVideoInfo *vit, int &blockNI,
   int &xblocksI, uint64_t &metricF, bool scene, VSCore *core) const
 {
   uint64_t highestDiff = 0;
@@ -1240,18 +1240,18 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
   uint64_t highestDiff;
   int next_num = -20, next_numd = -20;
 
-  VSFrameRef *prv = nullptr, *nxt = nullptr;
-  const VSFrameRef *prevt = nullptr, *nextt = nullptr;
+  VSFrame *prv = nullptr, *nxt = nullptr;
+  const VSFrame *prevt = nullptr, *nextt = nullptr;
   if (predenoise)
   {
-    prv = vsapi->newVideoFrame(vi_child->format, vi_child->width, vi_child->height, nullptr, core);
-    nxt = vsapi->newVideoFrame(vi_child->format, vi_child->width, vi_child->height, nullptr, core);
+    prv = vsapi->newVideoFrame(&vi_child->format, vi_child->width, vi_child->height, nullptr, core);
+    nxt = vsapi->newVideoFrame(&vi_child->format, vi_child->width, vi_child->height, nullptr, core);
   }
 
   // Single fetch path so every call site gets the null check, and so the frames held across the
   // loop are released when one of them throws.
-  auto fetchFrame = [&](int frame_number) -> const VSFrameRef * {
-    const VSFrameRef *f;
+  auto fetchFrame = [&](int frame_number) -> const VSFrame * {
+    const VSFrame *f;
     if (frameCtx)
       f = vsapi->getFrameFilter(frame_number, child, frameCtx);
     else
@@ -1277,7 +1277,7 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
           if (!usehints) current.match[i] = -200;
           else
           {
-            const VSFrameRef *tmp = fetchFrame(w);
+            const VSFrame *tmp = fetchFrame(w);
             vsapi->freeFrame(nextt);
             nextt = tmp;
             next_num = w;
@@ -1288,14 +1288,14 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
       }
 
       {
-        const VSFrameRef *tmp = (next_num == w - 1) ? vsapi->cloneFrameRef(nextt)
+        const VSFrame *tmp = (next_num == w - 1) ? vsapi->addFrameRef(nextt)
                                                     : fetchFrame(w > 0 ? w - 1 : 0);
         vsapi->freeFrame(prevt);
         prevt = tmp;
       }
 
       {
-        const VSFrameRef *tmp = fetchFrame(w);
+        const VSFrame *tmp = fetchFrame(w);
         vsapi->freeFrame(nextt);
         nextt = tmp;
       }
@@ -1323,7 +1323,7 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
           if (!usehints) current.match[i] = -200;
           else
           {
-            const VSFrameRef *tmp = fetchFrame(w);
+            const VSFrame *tmp = fetchFrame(w);
             vsapi->freeFrame(nxt);
             nxt = vsapi->copyFrame(tmp, core);
             vsapi->freeFrame(tmp);
@@ -1336,18 +1336,18 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
 
       if (next_num == w - 1)
       {
-        VSFrameRef *copy = vsapi->copyFrame(nxt, core);
+        VSFrame *copy = vsapi->copyFrame(nxt, core);
         vsapi->freeFrame(prv);
         prv = copy;
       }
       else {
-        const VSFrameRef *tmp = fetchFrame(w > 0 ? w - 1 : 0);
+        const VSFrame *tmp = fetchFrame(w > 0 ? w - 1 : 0);
         vsapi->freeFrame(prv);
         prv = vsapi->copyFrame(tmp, core);
         vsapi->freeFrame(tmp);
       }
       {
-        const VSFrameRef *tmp = fetchFrame(w);
+        const VSFrame *tmp = fetchFrame(w);
         vsapi->freeFrame(nxt);
         nxt = vsapi->copyFrame(tmp, core);
         vsapi->freeFrame(tmp);
@@ -1418,20 +1418,20 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
   current.setIsFilmD2V();
 }
 
-int TDecimate::getTFMFrameProperties(const VSFrameRef *src, int& d2vfilm) const
+int TDecimate::getTFMFrameProperties(const VSFrame *src, int& d2vfilm) const
 {
-    const VSMap *props = vsapi->getFramePropsRO(src);
+    const VSMap *props = vsapi->getFramePropertiesRO(src);
     int err;
 
-  int match = int64ToIntS(vsapi->propGetInt(props, PROP_TFMMATCH, 0, &err));
+  int match = vsh::int64ToIntS(vsapi->mapGetInt(props, PROP_TFMMATCH, 0, &err));
   if (err)
       match = -200;
 
-  d2vfilm = int64ToIntS(vsapi->propGetInt(props, PROP_TFMD2VFilm, 0, &err));
+  d2vfilm = vsh::int64ToIntS(vsapi->mapGetInt(props, PROP_TFMD2VFilm, 0, &err));
   if (err)
       d2vfilm = 0;
 
-  int field = int64ToIntS(vsapi->propGetInt(props, PROP_TFMField, 0, &err));
+  int field = vsh::int64ToIntS(vsapi->mapGetInt(props, PROP_TFMField, 0, &err));
   if (err)
       field = 0;
 
@@ -2307,7 +2307,7 @@ void TDecimate::calcBlendRatios2(double &amount1, double &amount2, int &frame1, 
 
 // used in GetFrameMode01
 // hbd ready
-void TDecimate::blendFrames(const VSFrameRef *src1, const VSFrameRef *src2, VSFrameRef *dst,
+void TDecimate::blendFrames(const VSFrame *src1, const VSFrame *src2, VSFrame *dst,
   double amount1)
 {
   const uint8_t *srcp1, *srcp2;
@@ -2331,7 +2331,7 @@ void TDecimate::blendFrames(const VSFrameRef *src1, const VSFrameRef *src2, VSFr
     return;
   }
 
-  const VSFormat *format = vsapi->getFrameFormat(dst);
+  const VSVideoFormat *format = vsapi->getVideoFrameFormat(dst);
 
   const int np = format->numPlanes;
   const int bits_per_pixel = format->bitsPerSample;
@@ -2340,13 +2340,13 @@ void TDecimate::blendFrames(const VSFrameRef *src1, const VSFrameRef *src2, VSFr
   {
     const int plane = b;
     srcp1 = vsapi->getReadPtr(src1, plane);
-    s1_pitch = vsapi->getStride(src1, plane);
+    s1_pitch = (int)(vsapi->getStride(src1, plane));
     width = vsapi->getFrameWidth(src1, plane);
     height = vsapi->getFrameHeight(src1, plane);
     srcp2 = vsapi->getReadPtr(src2, plane);
-    s2_pitch = vsapi->getStride(src2, plane);
+    s2_pitch = (int)(vsapi->getStride(src2, plane));
     dstp = vsapi->getWritePtr(dst, plane);
-    dst_pitch = vsapi->getStride(dst, plane);
+    dst_pitch = (int)(vsapi->getStride(dst, plane));
 
     dispatch_blend(dstp, srcp1, srcp2, width, height, dst_pitch, s1_pitch, s2_pitch, weight_i, bits_per_pixel);
   }
@@ -2625,8 +2625,8 @@ finishTP:
   }
 #endif
 
-  int fpsNum = vi.fpsNum;
-  int frameNum = vi.fpsDen;
+  int64_t fpsNum = vi.fpsNum;
+  int64_t frameNum = vi.fpsDen;
   vi.fpsNum = 0;
   vi.fpsDen = 0;
   vi.numFrames = vi.numFrames - count;
@@ -2664,14 +2664,14 @@ finishTP:
         else ++count;
       }
       
-      int frameDen;
+      int64_t frameDen;
       switch (ddup)
       {
           case 1:
-          frameDen = static_cast<int>((int64_t)fpsNum * (cycle - cycleR) / cycle);
+          frameDen = fpsNum * (cycle - cycleR) / cycle;
           break;
           case 2:
-          frameDen = static_cast<int>((int64_t)fpsNum * (cycle - cycleR - 1) / cycle);
+          frameDen = fpsNum * (cycle - cycleR - 1) / cycle;
           break;
           default:
           frameDen = fpsNum;
@@ -2790,13 +2790,13 @@ finishTP:
 
 } // init mode 5
 
-TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, double _rate,
+TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double _rate,
   double _dupThresh, double _vidThresh, double _sceneThresh, int _hybrid,
   int _vidDetect, int _conCycle, int _conCycleTP, const char* _ovr,
   const char* _output, const char* _input, const char* _tfmIn, const char* _mkvOut,
   int _nt, int _blockx, int _blocky, bool _debug, bool _display, int _vfrDec,
   bool _batch, bool _tcfv1, bool _se, bool _chroma, bool _exPP, int _maxndl, bool _m2PA,
-  bool _predenoise, bool _noblend, bool _ssd, bool _usehints, VSNodeRef *_clip2,
+  bool _predenoise, bool _noblend, bool _ssd, bool _usehints, VSNode *_clip2,
   int _sdlim, int _opt, const char* _orgOut, const VSAPI *_vsapi, VSCore *core)
     : vsapi(_vsapi), child(_child),
   mode(_mode),
@@ -2825,18 +2825,15 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
   fps = (double)vi.fpsNum / (double)vi.fpsDen;
 
 
-  if (!vi.format)
-      throw TIVTCError("TDecimate: the clip must have constant format.");
+  if (!vsh::isConstantVideoFormat(&vi))
+      throw TIVTCError("TDecimate: the clip must have constant format and dimensions.");
 
-  if (vi.width == 0 || vi.height == 0)
-      throw TIVTCError("TDecimate: the clip must have constant dimensions.");
-
-  if (vi.format->bitsPerSample > 16)
+  if (vi.format.bitsPerSample > 16)
     throw TIVTCError("TDecimate:  only 8-16 bit formats supported!");
-  if (vi.format->colorFamily != cmYUV)
+  if (vi.format.colorFamily != cfYUV)
     throw TIVTCError("TDecimate:  YUV colorspaces only!");
-  if (vi.format->subSamplingW > 1 || vi.format->subSamplingH > 1 ||
-    vi.format->subSamplingH > vi.format->subSamplingW)
+  if (vi.format.subSamplingW > 1 || vi.format.subSamplingH > 1 ||
+    vi.format.subSamplingH > vi.format.subSamplingW)
     throw TIVTCError("TDecimate:  only 4:4:4, 4:2:2 and 4:2:0 subsampling is supported!");
   if (mode < 0 || mode > 7)
     throw TIVTCError("TDecimate:  mode must be set to 0, 1, 2, 3, 4, 5, 6, or 7!");
@@ -2904,9 +2901,9 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
 
   if (vi.numFrames != vi_clip2->numFrames)
     throw TIVTCError("TDecimate:  clip2 must have the same number of frames as the input clip!");
-  if (vi_clip2->format->colorFamily != cmYUV)
+  if (vi_clip2->format.colorFamily != cfYUV)
     throw TIVTCError("TDecimate:  clip2 must be YUV colorspace!");
-  if (vi_clip2->format->bitsPerSample > 16)
+  if (vi_clip2->format.bitsPerSample > 16)
     throw TIVTCError("TDecimate:  clip2: only 8-16 bit formats supported!");
 
 //  if (debug)
@@ -2977,14 +2974,14 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
   char error[512] = "TDecimate: Couldn't fetch the first frame from the input clip to read TFM's PP value. Reason: ";
   size_t len = strlen(error);
 
-  const VSFrameRef *first_frame = vsapi->getFrame(0, child, error + len, 512 - len);
+  const VSFrame *first_frame = vsapi->getFrame(0, child, error + len, (int)(512 - len));
   if (first_frame == nullptr)
       throw TIVTCError(error);
 
-  const VSMap *props = vsapi->getFramePropsRO(first_frame);
+  const VSMap *props = vsapi->getFramePropertiesRO(first_frame);
 
   int err;
-  int64_t TFMPP = vsapi->propGetInt(props, PROP_TFMPP, 0, &err);
+  int64_t TFMPP = vsapi->mapGetInt(props, PROP_TFMPP, 0, &err);
   vsapi->freeFrame(first_frame);
   if (err)
       useTFMPP = false;
@@ -2996,8 +2993,8 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
 
     if (chroma)
     {
-      const int blockx_chroma = blockx >> vi.format->subSamplingW;
-      const int blocky_chroma = blocky >> vi.format->subSamplingH;
+      const int blockx_chroma = blockx >> vi.format.subSamplingW;
+      const int blocky_chroma = blocky >> vi.format.subSamplingH;
       if (ssd) 
         MAX_DIFF = (uint64_t)(sqrt(219.0*219.0*blockx*blocky + 224.0*224.0* blockx_chroma * blocky_chroma *2.0));
       else 
@@ -3024,7 +3021,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
 
   if (mode <= 5 || mode == 7)
   {
-    diff = decltype(diff) (vs_aligned_malloc<uint64_t>((((vi.width + blockx_half) >> blockx_shift) + 1)*(((vi.height + blocky_half) >> blocky_shift) + 1) * 4 * sizeof(uint64_t), 16), &vs_aligned_free);
+    diff = decltype(diff) (vsh::vsh_aligned_malloc<uint64_t>((((vi.width + blockx_half) >> blockx_shift) + 1)*(((vi.height + blocky_half) >> blocky_shift) + 1) * 4 * sizeof(uint64_t), 16), &vsh::vsh_aligned_free);
     if (diff == nullptr) throw TIVTCError("TDecimate:  malloc failure (diff)!");
   }
   if (output.size())
@@ -3546,7 +3543,7 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
     {
       vi.numFrames = (int)(((int64_t)vi.numFrames * (cycle - cycleR)) / cycle);
       nfrmsN = vi.numFrames - 1;
-      muldivRational(&vi.fpsNum, &vi.fpsDen, cycle - cycleR, cycle);
+      vsh::muldivRational(&vi.fpsNum, &vi.fpsDen, cycle - cycleR, cycle);
     }
     else nfrmsN = vi.numFrames - 1;
   }
@@ -3578,6 +3575,8 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
         throw TIVTCError("TDecimate:  rate value is out of range.");
     vi.fpsNum = num;
     vi.fpsDen = den;
+    // API 4 rejects a VSVideoInfo whose frame rate is not in lowest terms.
+    vsh::reduceRational(&vi.fpsNum, &vi.fpsDen);
     vi.numFrames = (int)(vi.numFrames * (arate / fps));
     nfrmsN = vi.numFrames - 1;
   }
@@ -3600,6 +3599,8 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
         throw TIVTCError("TDecimate:  rate value is out of range.");
     vi.fpsNum = num;
     vi.fpsDen = den;
+    // API 4 rejects a VSVideoInfo whose frame rate is not in lowest terms.
+    vsh::reduceRational(&vi.fpsNum, &vi.fpsDen);
     vi.numFrames = (int)(vi.numFrames * (rate / fps));
     nfrmsN = vi.numFrames - 1;
     mode2_decA.resize(vi.numFrames, -20);
@@ -3640,7 +3641,8 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
 
     // frameDen is carried over between iterations of the outer loop, so give it the mode 6 base
     // rate rather than leaving the first use dependent on the dups chain covering every value.
-    int j = 0, k = 0, frm = 0, dups, frameDen = 24000;
+    int j = 0, k = 0, frm = 0, dups;
+    int64_t frameDen = 24000;
     double timestamp = 0.0;
     int lastt = 0, lastf = 0;
     if ((f = tivtc_fopen(mkvOut.c_str(), "w")) == nullptr)
@@ -3824,6 +3826,11 @@ TDecimate::TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, doub
     vi.width = vi_clip2->width;
     vi.height = vi_clip2->height;
     vi.format = vi_clip2->format;
+
+    // Decimating a very short clip can round the output length down to nothing. Say so here
+    // rather than letting createVideoFilter reject the VSVideoInfo with a generic message.
+    if (vi.numFrames < 1)
+      throw TIVTCError("TDecimate:  the requested decimation leaves no output frames!");
 }
 
 TDecimate::~TDecimate()

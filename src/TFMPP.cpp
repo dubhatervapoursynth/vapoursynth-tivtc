@@ -29,7 +29,7 @@
 #include "TCommonASM.h"
 
 
-const VSFrameRef *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
 {
   if (n < 0) n = 0;
   else if (n > nfrms) n = nfrms;
@@ -58,30 +58,30 @@ const VSFrameRef *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *f
 
   bool combed;
   int fieldSrc, field;
-  const VSFrameRef *src = vsapi->getFrameFilter(n, child, frameCtx);
+  const VSFrame *src = vsapi->getFrameFilter(n, child, frameCtx);
   getProperties(src, fieldSrc, combed);
   if (!combed)
   {
     return src;
   }
   getSetOvr(n);
-  VSFrameRef *dst;
+  VSFrame *dst;
   if (PP > 4)
   {
     int use = 0;
 
-    const VSFrameRef *prv = vsapi->getFrameFilter(std::max(0, n - 1), child, frameCtx);
+    const VSFrame *prv = vsapi->getFrameFilter(std::max(0, n - 1), child, frameCtx);
     getProperties(prv, field, combed);
     if (!combed && field != -1 && n != 0) ++use;
-    const VSFrameRef *nxt = vsapi->getFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
+    const VSFrame *nxt = vsapi->getFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
     getProperties(nxt, field, combed);
     if (!combed && field != -1 && n != nfrms) use += 2;
     if (use > 0)
     {
-      dst = vsapi->newVideoFrame(vi->format, vi->width, vi->height, src, core);
+      dst = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, src, core);
       buildMotionMask(prv, src, nxt, mmask, use);
       if (uC2) {
-        const VSFrameRef *frame = vsapi->getFrameFilter(n, clip2, frameCtx);
+        const VSFrame *frame = vsapi->getFrameFilter(n, clip2, frameCtx);
         maskClip2(src, frame, mmask, dst);
         vsapi->freeFrame(frame);
       }
@@ -108,13 +108,13 @@ const VSFrameRef *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *f
     {
       if (uC2)
       {
-          const VSFrameRef *frame = vsapi->getFrameFilter(n, clip2, frameCtx);
+          const VSFrame *frame = vsapi->getFrameFilter(n, clip2, frameCtx);
         dst = vsapi->copyFrame(frame, core);
         vsapi->freeFrame(frame);
       }
       else
       {
-        dst = vsapi->newVideoFrame(vi->format, vi->width, vi->height, src, core);
+        dst = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, src, core);
         if (PP == 5) 
           BlendDeint(src, mmask, dst, true);
         else
@@ -140,13 +140,13 @@ const VSFrameRef *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *f
     // PP <= 4
     if (uC2)
     {
-        const VSFrameRef *frame = vsapi->getFrameFilter(n, clip2, frameCtx);
+        const VSFrame *frame = vsapi->getFrameFilter(n, clip2, frameCtx);
       dst = vsapi->copyFrame(frame, core);
       vsapi->freeFrame(frame);
     }
     else
     {
-      dst = vsapi->newVideoFrame(vi->format, vi->width, vi->height, src, core);
+      dst = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, src, core);
       if (PP == 2)
         BlendDeint(src, mmask, dst, true);
       else
@@ -169,31 +169,31 @@ const VSFrameRef *TFMPP::GetFrame(int n, int activationReason, VSFrameContext *f
   return dst;
 }
 
-void TFMPP::buildMotionMask(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt,
-  VSFrameRef *mask, int use) const
+void TFMPP::buildMotionMask(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt,
+  VSFrame *mask, int use) const
 {
-  if (vi->format->bytesPerSample == 1)
+  if (vi->format.bytesPerSample == 1)
     buildMotionMask_core<uint8_t>(prv, src, nxt, mask, use);
   else
     buildMotionMask_core<uint16_t>(prv, src, nxt, mask, use);
 }
 
 template<typename pixel_t>
-void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt,
-  VSFrameRef* mask, int use) const
+void TFMPP::buildMotionMask_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt,
+  VSFrame* mask, int use) const
 {
 
-  const int np = vi->format->numPlanes;
+  const int np = vi->format.numPlanes;
   for (int b = 0; b < np; ++b)
   {
     const int plane = b;
     const pixel_t *prvpp = reinterpret_cast<const pixel_t *>(vsapi->getReadPtr(prv, plane));
-    const int prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
+    const int prv_pitch = (int)(vsapi->getStride(prv, plane) / sizeof(pixel_t));
     const pixel_t*prvp = prvpp + prv_pitch;
     const pixel_t*prvpn = prvp + prv_pitch;
 
     const pixel_t *srcpp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
-    const int src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
+    const int src_pitch = (int)(vsapi->getStride(src, plane) / sizeof(pixel_t));
     
     const int width = vsapi->getFrameWidth(src, plane);
     const int height = vsapi->getFrameHeight(src, plane);
@@ -202,16 +202,16 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
     const pixel_t *srcpn = srcp + src_pitch;
 
     const pixel_t *nxtpp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
-    const int nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
+    const int nxt_pitch = (int)(vsapi->getStride(nxt, plane) / sizeof(pixel_t));
     const pixel_t *nxtp = nxtpp + nxt_pitch;
     const pixel_t *nxtpn = nxtp + nxt_pitch;
 
     uint8_t *maskw = vsapi->getWritePtr(mask, b);
-    const int msk_pitch = vsapi->getStride(mask, b);
+    const int msk_pitch = (int)(vsapi->getStride(mask, b));
 
     maskw += msk_pitch;
     
-    const int mthresh_scaled = mthresh << (vi->format->bitsPerSample - 8);
+    const int mthresh_scaled = mthresh << (vi->format.bitsPerSample - 8);
 
     if (use == 1)
     {
@@ -290,13 +290,13 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
   }
 
     denoisePlanar(mask);
-    if (vi->format->subSamplingW == 1 && vi->format->subSamplingH == 1)
+    if (vi->format.subSamplingW == 1 && vi->format.subSamplingH == 1)
       linkPlanar<420>(mask);
-    else if (vi->format->subSamplingW == 1 && vi->format->subSamplingH == 0)
+    else if (vi->format.subSamplingW == 1 && vi->format.subSamplingH == 0)
       linkPlanar<422>(mask);
-    else if (vi->format->subSamplingW == 0 && vi->format->subSamplingH == 0)
+    else if (vi->format.subSamplingW == 0 && vi->format.subSamplingH == 0)
       linkPlanar<444>(mask);
-    else if (vi->format->subSamplingW == 2 && vi->format->subSamplingH == 0)
+    else if (vi->format.subSamplingW == 2 && vi->format.subSamplingH == 0)
       linkPlanar<411>(mask);
 }
 
@@ -307,14 +307,14 @@ void TFMPP::buildMotionMask_core(const VSFrameRef *prv, const VSFrameRef *src, c
 
 // mask-only no need HBD here
 // Differences
-// TFMPP::denoisePlanar: const VSFrameRef, 0xFF, TDeinterlace:PVideoFrame 0x3C
-void TFMPP::denoisePlanar(VSFrameRef *mask) const
+// TFMPP::denoisePlanar: const VSFrame, 0xFF, TDeinterlace:PVideoFrame 0x3C
+void TFMPP::denoisePlanar(VSFrame *mask) const
 {
-  const int np = vsapi->getFrameFormat(mask)->numPlanes;
+  const int np = vsapi->getVideoFrameFormat(mask)->numPlanes;
   for (int b = 0; b < np; ++b)
   {
     uint8_t *maskpp = vsapi->getWritePtr(mask, b);
-    const int msk_pitch = vsapi->getStride(mask, b);
+    const int msk_pitch = (int)(vsapi->getStride(mask, b));
     uint8_t *maskp = maskpp + msk_pitch;
     uint8_t *maskpn = maskp + msk_pitch;
     const int Height = vsapi->getFrameHeight(mask, b);
@@ -344,13 +344,13 @@ void TFMPP::denoisePlanar(VSFrameRef *mask) const
 }
 
 template<int planarType>
-void TFMPP::linkPlanar(VSFrameRef* mask) const
+void TFMPP::linkPlanar(VSFrame* mask) const
 {
   uint8_t* maskpY = vsapi->getWritePtr(mask, 0);
   uint8_t* maskpV = vsapi->getWritePtr(mask, 1);
   uint8_t* maskpU = vsapi->getWritePtr(mask, 2);
-  const int mask_pitchY = vsapi->getStride(mask, 0);
-  const int mask_pitchUV = vsapi->getStride(mask, 2);
+  const int mask_pitchY = (int)(vsapi->getStride(mask, 0));
+  const int mask_pitchUV = (int)(vsapi->getStride(mask, 2));
   const int HeightUV = vsapi->getFrameHeight(mask, 2);
   const int WidthUV = vsapi->getFrameWidth(mask, 2);
 
@@ -410,27 +410,27 @@ void TFMPP::linkPlanar(VSFrameRef* mask) const
   }
 }
 
-void TFMPP::BlendDeint(const VSFrameRef *src, const VSFrameRef* mask, VSFrameRef *dst,
+void TFMPP::BlendDeint(const VSFrame *src, const VSFrame* mask, VSFrame *dst,
   bool nomask) const
 {
-  if (vi->format->bitsPerSample == 8)
+  if (vi->format.bitsPerSample == 8)
     BlendDeint_core<uint8_t>(src, mask, dst, nomask);
   else
     BlendDeint_core<uint16_t>(src, mask, dst, nomask);
 }
 
 template<typename pixel_t>
-void TFMPP::BlendDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFrameRef *dst,
+void TFMPP::BlendDeint_core(const VSFrame *src, const VSFrame* mask, VSFrame *dst,
   bool nomask) const
 {
 
-  const int np = vi->format->numPlanes;
+  const int np = vi->format.numPlanes;
 
   for (int b = 0; b < np; ++b)
   {
     const int plane = b;
     const pixel_t *srcp = reinterpret_cast<const pixel_t *>(vsapi->getReadPtr(src, plane));
-    const int src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
+    const int src_pitch = (int)(vsapi->getStride(src, plane) / sizeof(pixel_t));
 
     const int width = vsapi->getFrameWidth(src, plane);
     const int height = vsapi->getFrameHeight(src, plane);
@@ -439,10 +439,10 @@ void TFMPP::BlendDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
     const pixel_t* srcpn = srcp + src_pitch;
 
     pixel_t *dstp = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, plane));
-    const int dst_pitch = vsapi->getStride(dst, plane) / sizeof(pixel_t);
+    const int dst_pitch = (int)(vsapi->getStride(dst, plane) / sizeof(pixel_t));
 
     const uint8_t *maskp = vsapi->getReadPtr(mask, b);
-    const int msk_pitch = vsapi->getStride(mask, b);
+    const int msk_pitch = (int)(vsapi->getStride(mask, b));
     
     // top line
     for (int x = 0; x < width; ++x)
@@ -498,10 +498,10 @@ void blendDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
   }
 }
 
-void TFMPP::CubicDeint(const VSFrameRef *src, const VSFrameRef *mask, VSFrameRef *dst, bool nomask,
+void TFMPP::CubicDeint(const VSFrame *src, const VSFrame *mask, VSFrame *dst, bool nomask,
   int field) const
 {
-    switch (vi->format->bitsPerSample) {
+    switch (vi->format.bitsPerSample) {
     case 8: CubicDeint_core<uint8_t, 8>(src, mask, dst, nomask, field); break;
     case 10: CubicDeint_core<uint16_t, 10>(src, mask, dst, nomask, field); break;
     case 12: CubicDeint_core<uint16_t, 12>(src, mask, dst, nomask, field); break;
@@ -511,11 +511,11 @@ void TFMPP::CubicDeint(const VSFrameRef *src, const VSFrameRef *mask, VSFrameRef
 }
 
 template<typename pixel_t, int bits_per_pixel>
-void TFMPP::CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFrameRef *dst, bool nomask,
+void TFMPP::CubicDeint_core(const VSFrame *src, const VSFrame* mask, VSFrame *dst, bool nomask,
   int field) const
 {
 
-  const int np = vi->format->numPlanes;
+  const int np = vi->format.numPlanes;
 
   for (int b = 0; b < np; ++b)
   {
@@ -523,17 +523,17 @@ void TFMPP::CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
 
     const pixel_t *srcp = reinterpret_cast<const pixel_t *>(vsapi->getReadPtr(src, plane));
     // !! yes, double;
-    const int src_pitch = vsapi->getStride(src, plane) * 2 / sizeof(pixel_t);
+    const int src_pitch = (int)(vsapi->getStride(src, plane) * 2 / sizeof(pixel_t));
 
     const int width = vsapi->getFrameWidth(src, plane);
     const int rowsize = width * sizeof(pixel_t);
     const int height = vsapi->getFrameHeight(src, plane);
 
     pixel_t *dstp = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, plane));
-    const int dst_pitch = (vsapi->getStride(dst, plane) << 1) / sizeof(pixel_t);
+    const int dst_pitch = (int)((vsapi->getStride(dst, plane) << 1) / sizeof(pixel_t));
 
     const uint8_t *maskp = vsapi->getReadPtr(mask, b);
-    const int msk_pitch = vsapi->getStride(mask, b) << 1;
+    const int msk_pitch = (int)(vsapi->getStride(mask, b) << 1);
     
     srcp += (src_pitch >> 1)*(3 - field);
     dstp += (dst_pitch >> 1)*(2 - field);
@@ -546,7 +546,7 @@ void TFMPP::CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
 
     // top orphan
     if (field == 0)
-      vs_bitblt(vsapi->getWritePtr(dst, plane), (dst_pitch >> 1) * sizeof(pixel_t),
+      vsh::bitblt(vsapi->getWritePtr(dst, plane), (dst_pitch >> 1) * sizeof(pixel_t),
         vsapi->getReadPtr(src, plane) + (src_pitch >> 1) * sizeof(pixel_t), (src_pitch >> 1) * sizeof(pixel_t), rowsize, 1);
     
     if (nomask)
@@ -609,7 +609,7 @@ void TFMPP::CubicDeint_core(const VSFrameRef *src, const VSFrameRef* mask, VSFra
     }
     // bottom orphan
     if (field == 1)
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + (height - 1)*(dst_pitch >> 1) * sizeof(pixel_t), (dst_pitch >> 1) * sizeof(pixel_t),
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (height - 1)*(dst_pitch >> 1) * sizeof(pixel_t), (dst_pitch >> 1) * sizeof(pixel_t),
         vsapi->getReadPtr(src, plane) + (height - 2)*(src_pitch >> 1) * sizeof(pixel_t), (src_pitch >> 1) * sizeof(pixel_t), rowsize, 1);
   }
 }
@@ -644,16 +644,16 @@ void cubicDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
 }
 
 
-//void TFMPP::destroyHint(VSFrameRef *dst, unsigned int hint)
+//void TFMPP::destroyHint(VSFrame *dst, unsigned int hint)
 //{
-//  if (vi->format->bytesPerSample == 1)
+//  if (vi->format.bytesPerSample == 1)
 //    destroyHint_core<uint8_t>(dst, hint);
 //  else
 //    destroyHint_core<uint16_t>(dst, hint);
 //}
 
 //template<typename pixel_t>
-//void TFMPP::destroyHint_core(VSFrameRef *dst, unsigned int hint)
+//void TFMPP::destroyHint_core(VSFrame *dst, unsigned int hint)
 //{
 //  pixel_t* p = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 0));
 //  if (hint & 0x80)
@@ -677,16 +677,16 @@ void cubicDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
 //  }
 //}
 
-//void TFMPP::putHint(VSFrameRef *dst, int field, unsigned int hint)
+//void TFMPP::putHint(VSFrame *dst, int field, unsigned int hint)
 //{
-//  if (vi->format->bytesPerSample == 1)
+//  if (vi->format.bytesPerSample == 1)
 //    return putHint_core<uint8_t>(dst, field, hint);
 //  else
 //    return putHint_core<uint16_t>(dst, field, hint);
 //}
 
 //template<typename pixel_t>
-//void TFMPP::putHint_core(VSFrameRef *dst, int field, unsigned int hint)
+//void TFMPP::putHint_core(VSFrame *dst, int field, unsigned int hint)
 //{
 //  pixel_t *p = reinterpret_cast<pixel_t *>(vsapi->getWritePtr(dst, 0));
 //  unsigned int i;
@@ -709,21 +709,21 @@ void cubicDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
 //  }
 //}
 
-void TFMPP::getProperties(const VSFrameRef *src, int& field, bool& combed) const
+void TFMPP::getProperties(const VSFrame *src, int& field, bool& combed) const
 {
     field = -1; combed = false;
 
-    const VSMap *props = vsapi->getFramePropsRO(src);
+    const VSMap *props = vsapi->getFramePropertiesRO(src);
 
-    if (vsapi->propNumElements(props, PROP_TFMField) == 1)
-        field = int64ToIntS(vsapi->propGetInt(props, PROP_TFMField, 0, nullptr));
+    if (vsapi->mapNumElements(props, PROP_TFMField) == 1)
+        field = vsh::int64ToIntS(vsapi->mapGetInt(props, PROP_TFMField, 0, nullptr));
 
-    if (vsapi->propNumElements(props, PROP_Combed) == 1)
-        combed = !!vsapi->propGetInt(props, PROP_Combed, 0, nullptr);
+    if (vsapi->mapNumElements(props, PROP_Combed) == 1)
+        combed = !!vsapi->mapGetInt(props, PROP_Combed, 0, nullptr);
 }
 
 //template<typename pixel_t>
-//bool TFMPP::getHint_core(const VSFrameRef *src, int &field, bool &combed, unsigned int &hint)
+//bool TFMPP::getHint_core(const VSFrame *src, int &field, bool &combed, unsigned int &hint)
 //{
 //  field = -1; combed = false; hint = 0;
 //  const pixel_t *srcp = reinterpret_cast<const pixel_t *>(vsapi->getReadPtr(src, 0));
@@ -776,35 +776,35 @@ int TFMPP::getEffectivePP(int n) const
   return pp;
 }
 
-void TFMPP::copyField(VSFrameRef *dst, const VSFrameRef *src, int field) const
+void TFMPP::copyField(VSFrame *dst, const VSFrame *src, int field) const
 {
   // bit depth independent
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
   const int np = format->numPlanes;
 
   for (int b = 0; b < np; ++b)
   {
     const int plane = b;
-    const int dst_pitch = vsapi->getStride(dst, plane);
-    const int src_pitch = vsapi->getStride(src, plane);
+    const int dst_pitch = (int)(vsapi->getStride(dst, plane));
+    const int src_pitch = (int)(vsapi->getStride(src, plane));
     uint8_t *dstp = vsapi->getWritePtr(dst, plane);
     const uint8_t *srcp = vsapi->getReadPtr(src, plane);
     const int width = vsapi->getFrameWidth(src, plane);
     const int height = vsapi->getFrameHeight(src, plane);
     if (field == 0)
-      vs_bitblt(dstp, dst_pitch, srcp + src_pitch,
+      vsh::bitblt(dstp, dst_pitch, srcp + src_pitch,
         src_pitch, width * format->bytesPerSample, 1);
-    vs_bitblt(dstp + dst_pitch *(1 - field),
+    vsh::bitblt(dstp + dst_pitch *(1 - field),
       dst_pitch * 2, srcp + src_pitch *(1 - field),
       src_pitch * 2, width * format->bytesPerSample, height >> 1);
     if (field == 1)
-      vs_bitblt(dstp + dst_pitch *(height - 1),
+      vsh::bitblt(dstp + dst_pitch *(height - 1),
         dst_pitch, srcp + src_pitch *(height - 2),
         src_pitch, width * format->bytesPerSample, 1);
   }
 }
 
-void TFMPP::writeDisplay(VSFrameRef *dst, int n, int field) const
+void TFMPP::writeDisplay(VSFrame *dst, int n, int field) const
 {
 #define SZ 160
     char buf[SZ];
@@ -818,13 +818,13 @@ void TFMPP::writeDisplay(VSFrameRef *dst, int n, int field) const
   text += buf;
 #undef SZ
 
-  VSMap *props = vsapi->getFramePropsRW(dst);
-  vsapi->propSetData(props, PROP_TFMDisplay, text.c_str(), text.size(), paReplace);
+  VSMap *props = vsapi->getFramePropertiesRW(dst);
+  vsapi->mapSetData(props, PROP_TFMDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
 }
 
-void TFMPP::elaDeint(VSFrameRef *dst, const VSFrameRef* mask, const VSFrameRef *src, bool nomask, int field) const
+void TFMPP::elaDeint(VSFrame *dst, const VSFrame* mask, const VSFrame *src, bool nomask, int field) const
 {
-    switch (vi->format->bitsPerSample) {
+    switch (vi->format.bitsPerSample) {
     case 8: elaDeintPlanar<uint8_t, 8>(dst, mask, src, nomask, field); break;
     case 10: elaDeintPlanar<uint16_t, 10>(dst, mask, src, nomask, field); break;
     case 12: elaDeintPlanar<uint16_t, 12>(dst, mask, src, nomask, field); break;
@@ -835,13 +835,13 @@ void TFMPP::elaDeint(VSFrameRef *dst, const VSFrameRef* mask, const VSFrameRef *
 
 // totally different from TDeinterlace ELADeintPlanar
 template<typename pixel_t, int bits_per_pixel>
-void TFMPP::elaDeintPlanar(VSFrameRef *dst, const VSFrameRef *mask, const VSFrameRef *src, bool nomask, int field) const
+void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src, bool nomask, int field) const
 {
   const pixel_t *srcpY = reinterpret_cast<const pixel_t *>(vsapi->getReadPtr(src, 0));
   const pixel_t *srcpV = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, 2));
   const pixel_t *srcpU = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, 1));
-  int src_pitchY = vsapi->getStride(src, 0) / sizeof(pixel_t);
-  int src_pitchUV = vsapi->getStride(src, 2) / sizeof(pixel_t);
+  int src_pitchY = (int)(vsapi->getStride(src, 0) / sizeof(pixel_t));
+  int src_pitchUV = (int)(vsapi->getStride(src, 2) / sizeof(pixel_t));
   
   const int WidthY = vsapi->getFrameWidth(src, 0);
   const int WidthUV = vsapi->getFrameWidth(src, 2);
@@ -851,14 +851,14 @@ void TFMPP::elaDeintPlanar(VSFrameRef *dst, const VSFrameRef *mask, const VSFram
   pixel_t *dstpY = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 0));
   pixel_t *dstpV = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 2));
   pixel_t *dstpU = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 1));
-  int dst_pitchY = vsapi->getStride(dst, 0) / sizeof(pixel_t);
-  int dst_pitchUV = vsapi->getStride(dst, 2) / sizeof(pixel_t);
+  int dst_pitchY = (int)(vsapi->getStride(dst, 0) / sizeof(pixel_t));
+  int dst_pitchUV = (int)(vsapi->getStride(dst, 2) / sizeof(pixel_t));
 
   const uint8_t *maskpY = vsapi->getReadPtr(mask, 0);
   const uint8_t *maskpV = vsapi->getReadPtr(mask, 2);
   const uint8_t *maskpU = vsapi->getReadPtr(mask, 1);
-  int mask_pitchY = vsapi->getStride(mask, 0);
-  int mask_pitchUV = vsapi->getStride(mask, 2);
+  int mask_pitchY = (int)(vsapi->getStride(mask, 0));
+  int mask_pitchUV = (int)(vsapi->getStride(mask, 2));
 
   srcpY += src_pitchY*(3 - field);
   srcpV += src_pitchUV*(3 - field);
@@ -1146,16 +1146,16 @@ void TFMPP::elaDeintPlanar(VSFrameRef *dst, const VSFrameRef *mask, const VSFram
 }
 
 // hbd ready
-void TFMPP::maskClip2(const VSFrameRef *src, const VSFrameRef *deint, const VSFrameRef *mask,
-  VSFrameRef *dst) const
+void TFMPP::maskClip2(const VSFrame *src, const VSFrame *deint, const VSFrame *mask,
+  VSFrame *dst) const
 {
 
   const uint8_t *srcp, *maskp, *dntp;
   uint8_t *dstp;
   int src_pitch, msk_pitch, dst_pitch, dnt_pitch;
 
-  const int np = vi->format->numPlanes;
-  const int pixelsize = vi->format->bytesPerSample;
+  const int np = vi->format.numPlanes;
+  const int pixelsize = vi->format.bytesPerSample;
 
   for (int b = 0; b < np; ++b)
   {
@@ -1163,15 +1163,15 @@ void TFMPP::maskClip2(const VSFrameRef *src, const VSFrameRef *deint, const VSFr
     srcp = vsapi->getReadPtr(src, plane);
     const int width = vsapi->getFrameWidth(src, plane);
     const int height = vsapi->getFrameHeight(src, plane);
-    src_pitch = vsapi->getStride(src, plane);
+    src_pitch = (int)(vsapi->getStride(src, plane));
 
     maskp = vsapi->getReadPtr(mask, b);
-    msk_pitch = vsapi->getStride(mask, b);
+    msk_pitch = (int)(vsapi->getStride(mask, b));
 
     dntp = vsapi->getReadPtr(deint, plane);
-    dnt_pitch = vsapi->getStride(deint, plane);
+    dnt_pitch = (int)(vsapi->getStride(deint, plane));
     dstp = vsapi->getWritePtr(dst, plane);
-    dst_pitch = vsapi->getStride(dst, plane);
+    dst_pitch = (int)(vsapi->getStride(dst, plane));
 
     using maskClip2_fn_t = decltype(maskClip2_C<uint8_t>);
     maskClip2_fn_t* maskClip2_fn;
@@ -1213,8 +1213,8 @@ void maskClip2_C(const uint8_t* srcp, const uint8_t* dntp,
 // 8 bit only
 
 
-TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _display,
-  VSNodeRef *_clip2, bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core)
+TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _display,
+  VSNode *_clip2, bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core)
     : vsapi(_vsapi), child(_child),
   PP(_PP), mthresh(_mthresh), ovr(_ovr), display(_display), clip2(_clip2),
   opt(_opt)
@@ -1229,11 +1229,11 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
   std::unique_ptr<FILE, decltype (&fclose)> f(nullptr, nullptr);
 
 
-  if (vi->format->bitsPerSample > 16)
+  if (vi->format.bitsPerSample > 16)
     throw TIVTCError("TFMPP:  only 8-16 bit formats supported!");
-  if (vi->format->sampleType != stInteger)
+  if (vi->format.sampleType != stInteger)
       throw TIVTCError("TFMPP: only integer formats supported!");
-  if (vi->format->colorFamily != cmYUV)
+  if (vi->format.colorFamily != cfYUV)
     throw TIVTCError("TFMPP:  YUV data only!");
   if (vi->height & 1 || vi->width & 1)
     throw TIVTCError("TFMPP:  height and width must be divisible by 2!");
@@ -1249,7 +1249,7 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
 //      throw TIVTCError("TFMPP:  clip2 bit depth do not match input clip!!");
 //    if (!vi2.IsYUV())
 //      throw TIVTCError("TFMPP:  clip2 must be in YUV colorspace!");
-    if (vi->format != vi2->format)
+    if (!vsh::isSameVideoFormat(&vi->format, &vi2->format))
       throw TIVTCError("TFMPP:  clip2 colorspace must be the same as input clip!");
     if (vi2->height != vi->height || vi2->width != vi->width)
       throw TIVTCError("TFMPP:  clip2 frame dimensions do not match input clip!");
@@ -1385,7 +1385,7 @@ TFMPP::TFMPP(VSNodeRef *_child, int _PP, int _mthresh, const char* _ovr, bool _d
     }
   }
 emptyovrFM:
-  mmask = vsapi->newVideoFrame(vi->format, vi->width, vi->height, nullptr, core);
+  mmask = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, nullptr, core);
 }
 
 TFMPP::~TFMPP()

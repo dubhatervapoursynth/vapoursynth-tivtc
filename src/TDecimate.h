@@ -42,8 +42,8 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include <VapourSynth.h>
-#include <VSHelper.h>
+#include <VapourSynth4.h>
+#include <VSHelper4.h>
 
 #include "internal.h"
 //#include "Font.h"
@@ -79,16 +79,16 @@ struct CalcMetricData {
   bool scene;
 };
 
-void CalcMetricsExtracted(const VSFrameRef *prevt, const VSFrameRef *currt, CalcMetricData& d, VSCore *core, const VSAPI *vsapi);
+void CalcMetricsExtracted(const VSFrame *prevt, const VSFrame *currt, CalcMetricData& d, VSCore *core, const VSAPI *vsapi);
 
-void blurFrame(const VSFrameRef *src, VSFrameRef *dst, int iterations,
+void blurFrame(const VSFrame *src, VSFrame *dst, int iterations,
   bool bchroma, VSCore *core, const VSAPI *vsapi);
 
 class TDecimate
 {
 private:
     const VSAPI *vsapi;
-    VSNodeRef *child;
+    VSNode *child;
     const VSVideoInfo *vi_child;
     const VSVideoInfo *vi_clip2;
 
@@ -123,7 +123,7 @@ private:
   bool ssd; // sum of squared distances (false = SAD)
   int sdlim;
   int opt;
-  VSNodeRef *clip2;
+  VSNode *clip2;
   std::string orgOut;
   Cycle prev, curr, next, nbuf;
 
@@ -138,10 +138,10 @@ private:
   double fps, mkvfps, mkvfps2;
   bool useTFMPP, cve, ecf, fullInfo;
   bool usehints;
-  std::unique_ptr<uint64_t, decltype (&vs_aligned_free)> diff;
+  std::unique_ptr<uint64_t, decltype (&vsh::vsh_aligned_free)> diff;
   std::vector<uint64_t> metricsArray, metricsOutArray, mode2_metrics;
   std::vector<int> aLUT, mode2_decA, mode2_order;
-  std::unordered_map<int, std::pair<int, int>> frame_duration_info;
+  std::unordered_map<int, std::pair<int64_t, int64_t>> frame_duration_info; // API 4 fps/duration are 64 bit
   unsigned int outputCrc;
   std::vector<uint8_t> ovrArray;
   int mode2_num, mode2_den, mode2_numCycles, mode2_cfs[10];
@@ -155,27 +155,27 @@ private:
   bool checkMatchDup(int mp, int mc);
   void findDupStrings(Cycle &p, Cycle &c, Cycle &n);
 
-  int getTFMFrameProperties(const VSFrameRef *src, int& d2vfilm) const;
+  int getTFMFrameProperties(const VSFrame *src, int& d2vfilm) const;
 //  template<typename pixel_t>
-//  int getHint_core(const VSFrameRef *src, int &d2vfilm);
+//  int getHint_core(const VSFrame *src, int &d2vfilm);
 
 //  template<typename pixel_t>
-//  void restoreHint(const VSFrameRef *dst);
+//  void restoreHint(const VSFrame *dst);
 
-  void blendFrames(const VSFrameRef *src1, const VSFrameRef *src2, VSFrameRef *dst,
+  void blendFrames(const VSFrame *src1, const VSFrame *src2, VSFrame *dst,
     double amount1);
   void calcBlendRatios(double &amount1, double &amount2, int &frame1, int &frame2, int n,
     int bframe, int cycleI);
 
-  const VSFrameRef *GetFrameMode01(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
-  const VSFrameRef *GetFrameMode2(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
-  const VSFrameRef *GetFrameMode3(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
-  const VSFrameRef *GetFrameMode4(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
-  const VSFrameRef *GetFrameMode56(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
-  const VSFrameRef *GetFrameMode7(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
+  const VSFrame *GetFrameMode01(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
+  const VSFrame *GetFrameMode2(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
+  const VSFrame *GetFrameMode3(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
+  const VSFrame *GetFrameMode4(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
+  const VSFrame *GetFrameMode56(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
+  const VSFrame *GetFrameMode7(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
   void getOvrFrame(int n, uint64_t &metricU, uint64_t &metricF) const;
   void getOvrCycle(Cycle &current, bool mode2);
-  void displayOutput(VSFrameRef *dst, int n,
+  void displayOutput(VSFrame *dst, int n,
     int ret, bool film, double amount1, double amount2, int f1, int f2);
   void formatDecs(std::string &buf, Cycle &current);
   void addMetricCycle(const Cycle &j);
@@ -195,7 +195,7 @@ private:
   //void SedgeSort(uint64_t *metrics, int *order, int length);
   //void pQuickerSort(uint64_t *metrics, int *order, int lower, int upper);
   void calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *core, VSFrameContext *frameCtx=nullptr) const;
-  uint64_t calcMetric(const VSFrameRef *prevt, const VSFrameRef *currt, const VSVideoInfo *vi, int &blockNI,
+  uint64_t calcMetric(const VSFrame *prevt, const VSFrame *currt, const VSVideoInfo *vi, int &blockNI,
     int &xblocksI, uint64_t &metricF, bool scene, VSCore *core) const;
 
 
@@ -212,15 +212,15 @@ private:
 public:
   VSVideoInfo vi;
 
-  const VSFrameRef *GetFrame(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
-  TDecimate(VSNodeRef *_child, int _mode, int _cycleR, int _cycle, double _rate,
+  const VSFrame *GetFrame(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core);
+  TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double _rate,
     double _dupThresh, double _vidThresh, double _sceneThresh, int _hybrid,
     int _vidDetect, int _conCycle, int _conCycleTP, const char* _ovr,
     const char* _output, const char* _input, const char* _tfmIn, const char* _mkvOut,
     int _nt, int _blockx, int _blocky, bool _debug, bool _display, int _vfrDec,
     bool _batch, bool _tcfv1, bool _se, bool _chroma, bool _exPP, int _maxndl,
     bool _m2PA, bool _predenoise, bool _noblend, bool _ssd, bool _usehints,
-    VSNodeRef *_clip2, int _sdlim, int _opt, const char* _orgOut, const VSAPI *_vsapi, VSCore *core);
+    VSNode *_clip2, int _sdlim, int _opt, const char* _orgOut, const VSAPI *_vsapi, VSCore *core);
   ~TDecimate();
 
 //  int __stdcall SetCacheHints(int cachehints, int frame_range) override {

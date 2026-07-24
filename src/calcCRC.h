@@ -25,6 +25,6 @@
 
 //#include <windows.h>
 //#include "internal.h"
-#include <VapourSynth.h>
+#include <VapourSynth4.h>
 
-void calcCRC(VSNodeRef *hclip, int stop, unsigned int& crc, const VSAPI *vsapi);
+void calcCRC(VSNode *hclip, int stop, unsigned int& crc, const VSAPI *vsapi);

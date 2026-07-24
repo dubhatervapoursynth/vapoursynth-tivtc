@@ -94,10 +94,10 @@ static const unsigned int Crc32Table[256] =
   0xB40BBE37, 0xC30C8EA1, 0x5A05DF1B, 0x2D02EF8D,
 };
 
-void calcCRC(VSNodeRef *hclip, int stop, unsigned int &crc, const VSAPI *vsapi)
+void calcCRC(VSNode *hclip, int stop, unsigned int &crc, const VSAPI *vsapi)
 {
   crc = 0xFFFFFFFF;
-  const VSFrameRef *src;
+  const VSFrame *src;
   const unsigned int *ptrCrcTable = Crc32Table;
   const uint8_t *buffer;
   int width, height, pitch, modulo, x;
@@ -108,8 +108,8 @@ void calcCRC(VSNodeRef *hclip, int stop, unsigned int &crc, const VSAPI *vsapi)
     src = vsapi->getFrame(x, hclip, nullptr, 0);
     if (src == nullptr) break; // upstream render failure: abort CRC (caller will report a mismatch)
     buffer = vsapi->getReadPtr(src, 0);
-    width = vsapi->getFrameWidth(src, 0) * vsapi->getFrameFormat(src)->bytesPerSample;
-    pitch = vsapi->getStride(src, 0);
+    width = vsapi->getFrameWidth(src, 0) * vsapi->getVideoFrameFormat(src)->bytesPerSample;
+    pitch = (int)(vsapi->getStride(src, 0));
     height = vsapi->getFrameHeight(src, 0);
     modulo = pitch - width;
     while (height--) {

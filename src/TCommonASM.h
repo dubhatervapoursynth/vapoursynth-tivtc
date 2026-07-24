@@ -25,7 +25,7 @@
 #include <stdint.h>
 #include "internal.h"
 #include <algorithm>
-#include <VSHelper.h>
+#include <VSHelper4.h>
 
 template<int bits_per_pixel>
 AVS_FORCEINLINE int cubicInt(int p1, int p2, int p3, int p4)
@@ -74,7 +74,7 @@ void do_buildABSDiffMask2(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dst
 
 
 // fixme: put non-asm utility functions into different file
-void copyFrame(VSFrameRef *dst, const VSFrameRef *src, const VSAPI *vsapi);
+void copyFrame(VSFrame *dst, const VSFrame *src, const VSAPI *vsapi);
 
 template<typename pixel_t>
 void blend_5050_c(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, int dst_pitch, int src1_pitch, int src2_pitch);

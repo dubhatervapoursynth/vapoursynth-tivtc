@@ -27,30 +27,19 @@
 #include <cstdlib>
 #include <cstring>
 
-#include <VapourSynth.h>
-#include <VSHelper.h>
+#include <VapourSynth4.h>
+#include <VSHelper4.h>
 
 #include "TFM.h"
 #include "TFMPP.h"
 #include "TDecimate.h"
 
 
-static void VS_CC tfmInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
-    (void)in;
-    (void)out;
-    (void)core;
-
-    TFM *d = (TFM *) *instanceData;
-
-    vsapi->setVideoInfo(d->vi, 1, node);
-}
-
-
-static const VSFrameRef *VS_CC tfmGetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+static const VSFrame *VS_CC tfmGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
     (void)frameData;
     (void)vsapi;
 
-    TFM *d = (TFM *) *instanceData;
+    TFM *d = (TFM *)instanceData;
 
     return d->GetFrame(n, activationReason, frameCtx, core);
 }
@@ -66,22 +55,11 @@ static void VS_CC tfmFree(void *instanceData, VSCore *core, const VSAPI *vsapi) 
 }
 
 
-static void VS_CC tfmppInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
-    (void)in;
-    (void)out;
-    (void)core;
-
-    TFMPP *d = (TFMPP *) *instanceData;
-
-    vsapi->setVideoInfo(d->vi, 1, node);
-}
-
-
-static const VSFrameRef *VS_CC tfmppGetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+static const VSFrame *VS_CC tfmppGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
     (void)frameData;
     (void)vsapi;
 
-    TFMPP *d = (TFMPP *) *instanceData;
+    TFMPP *d = (TFMPP *)instanceData;
 
     return d->GetFrame(n, activationReason, frameCtx, core);
 }
@@ -104,48 +82,48 @@ enum DisplayFilters {
 
 template <DisplayFilters filter>
 static void VS_CC tivtcDisplayFunc(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
-    VSNodeRef *clip = (VSNodeRef *)userData;
+    VSNode *clip = (VSNode *)userData;
 
     const char *display_prop = filter == DisplayTFM ? PROP_TFMDisplay : PROP_TDecimateDisplay;
 
     int err;
 
-    const VSFrameRef *f = vsapi->propGetFrame(in, "f", 0, &err);
+    const VSFrame *f = vsapi->mapGetFrame(in, "f", 0, &err);
     if (err) {
         // Nothing to annotate; hand the clip back untouched.
-        vsapi->propSetNode(out, "val", clip, paReplace);
+        vsapi->mapSetNode(out, "val", clip, maReplace);
         return;
     }
-    const VSMap *props = vsapi->getFramePropsRO(f);
-    const char *text = vsapi->propGetData(props, display_prop, 0, &err);
-    int text_size = err ? 0 : vsapi->propGetDataSize(props, display_prop, 0, nullptr);
+    const VSMap *props = vsapi->getFramePropertiesRO(f);
+    const char *text = vsapi->mapGetData(props, display_prop, 0, &err);
+    int text_size = err ? 0 : vsapi->mapGetDataSize(props, display_prop, 0, nullptr);
     if (err) {
         // Not every frame carries the property (e.g. TDecimate mode 3's end-of-clip notice, or
         // a per-frame PP override that makes TFM defer to TFMPP when TFMPP isn't in the chain).
         // Reading it with a null error pointer made VapourSynth abort the process instead.
         vsapi->freeFrame(f);
-        vsapi->propSetNode(out, "val", clip, paReplace);
+        vsapi->mapSetNode(out, "val", clip, maReplace);
         return;
     }
 
     VSMap *params = vsapi->createMap();
-    vsapi->propSetNode(params, "clip", clip, paReplace); // clip is freed by vapoursynth somewhere. We don't free it here.
-    vsapi->propSetData(params, "text", text, text_size, paReplace);
+    vsapi->mapSetNode(params, "clip", clip, maReplace); // clip is freed by vapoursynth somewhere. We don't free it here.
+    vsapi->mapSetData(params, "text", text, text_size, dtUtf8, maReplace);
     vsapi->freeFrame(f);
 
-    VSPlugin *text_plugin = vsapi->getPluginById("com.vapoursynth.text", core);
+    VSPlugin *text_plugin = vsapi->getPluginByID("com.vapoursynth.text", core);
     VSMap *ret = vsapi->invoke(text_plugin, "Text", params);
     vsapi->freeMap(params);
-    if (vsapi->getError(ret)) {
+    if (vsapi->mapGetError(ret)) {
         char error[512] = { 0 };
-        snprintf(error, 512, "%s: failed to invoke text.Text: %s", filter == DisplayTFM ? "TFM" : "TDecimate", vsapi->getError(ret));
+        snprintf(error, 512, "%s: failed to invoke text.Text: %s", filter == DisplayTFM ? "TFM" : "TDecimate", vsapi->mapGetError(ret));
         vsapi->freeMap(ret);
-        vsapi->setError(out, error);
+        vsapi->mapSetError(out, error);
         return;
     }
-    clip = vsapi->propGetNode(ret, "clip", 0, nullptr);
+    clip = vsapi->mapGetNode(ret, "clip", 0, nullptr);
     vsapi->freeMap(ret);
-    vsapi->propSetNode(out, "val", clip, paReplace);
+    vsapi->mapSetNode(out, "val", clip, maReplace);
     vsapi->freeNode(clip);
 }
 
@@ -155,144 +133,144 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, void *userData, VSCore 
 
     int err;
 
-    int order = int64ToIntS(vsapi->propGetInt(in, "order", 0, &err));
+    int order = vsh::int64ToIntS(vsapi->mapGetInt(in, "order", 0, &err));
     if (err)
         order = -1;
 
-    int field = int64ToIntS(vsapi->propGetInt(in, "field", 0, &err));
+    int field = vsh::int64ToIntS(vsapi->mapGetInt(in, "field", 0, &err));
     if (err)
         field = -1;
 
-    int mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, &err));
+    int mode = vsh::int64ToIntS(vsapi->mapGetInt(in, "mode", 0, &err));
     if (err)
         mode = 1;
 
-    int PP = int64ToIntS(vsapi->propGetInt(in, "PP", 0, &err));
+    int PP = vsh::int64ToIntS(vsapi->mapGetInt(in, "PP", 0, &err));
     if (err)
         PP = 6;
 
-    const char *ovr = vsapi->propGetData(in, "ovr", 0, &err);
+    const char *ovr = vsapi->mapGetData(in, "ovr", 0, &err);
     if (err)
         ovr = "";
 
-    const char *input = vsapi->propGetData(in, "input", 0, &err);
+    const char *input = vsapi->mapGetData(in, "input", 0, &err);
     if (err)
         input = "";
 
-    const char *output = vsapi->propGetData(in, "output", 0, &err);
+    const char *output = vsapi->mapGetData(in, "output", 0, &err);
     if (err)
         output = "";
 
-    const char *outputC = vsapi->propGetData(in, "outputC", 0, &err);
+    const char *outputC = vsapi->mapGetData(in, "outputC", 0, &err);
     if (err)
         outputC = "";
 
-    bool debug = !!vsapi->propGetInt(in, "debug", 0, &err); /// not used for anything at the moment. maybe use logMessage ?
+    bool debug = !!vsapi->mapGetInt(in, "debug", 0, &err); /// not used for anything at the moment. maybe use logMessage ?
     if (err)
         debug = false;
 
-    bool display = !!vsapi->propGetInt(in, "display", 0, &err);
+    bool display = !!vsapi->mapGetInt(in, "display", 0, &err);
     if (err)
         display = false;
 
-    int slow = int64ToIntS(vsapi->propGetInt(in, "slow", 0, &err));
+    int slow = vsh::int64ToIntS(vsapi->mapGetInt(in, "slow", 0, &err));
     if (err)
         slow = 1;
 
-    bool mChroma = !!vsapi->propGetInt(in, "mChroma", 0, &err);
+    bool mChroma = !!vsapi->mapGetInt(in, "mChroma", 0, &err);
     if (err)
         mChroma = true;
 
-    int cNum = int64ToIntS(vsapi->propGetInt(in, "cNum", 0, &err));
+    int cNum = vsh::int64ToIntS(vsapi->mapGetInt(in, "cNum", 0, &err));
     if (err)
         cNum = 15;
 
-    int cthresh = int64ToIntS(vsapi->propGetInt(in, "cthresh", 0, &err));
+    int cthresh = vsh::int64ToIntS(vsapi->mapGetInt(in, "cthresh", 0, &err));
     if (err)
         cthresh = 9;
 
-    int MI = int64ToIntS(vsapi->propGetInt(in, "MI", 0, &err));
+    int MI = vsh::int64ToIntS(vsapi->mapGetInt(in, "MI", 0, &err));
     if (err)
         MI = 80;
 
-    bool chroma = !!vsapi->propGetInt(in, "chroma", 0, &err);
+    bool chroma = !!vsapi->mapGetInt(in, "chroma", 0, &err);
     if (err)
         chroma = false;
 
-    int blockx = int64ToIntS(vsapi->propGetInt(in, "blockx", 0, &err));
+    int blockx = vsh::int64ToIntS(vsapi->mapGetInt(in, "blockx", 0, &err));
     if (err)
         blockx = 16;
 
-    int blocky = int64ToIntS(vsapi->propGetInt(in, "blocky", 0, &err));
+    int blocky = vsh::int64ToIntS(vsapi->mapGetInt(in, "blocky", 0, &err));
     if (err)
         blocky = 16;
 
-    int y0 = int64ToIntS(vsapi->propGetInt(in, "y0", 0, &err));
+    int y0 = vsh::int64ToIntS(vsapi->mapGetInt(in, "y0", 0, &err));
     if (err)
         y0 = 0;
 
-    int y1 = int64ToIntS(vsapi->propGetInt(in, "y1", 0, &err));
+    int y1 = vsh::int64ToIntS(vsapi->mapGetInt(in, "y1", 0, &err));
     if (err)
         y1 = 0;
 
-    int mthresh = int64ToIntS(vsapi->propGetInt(in, "mthresh", 0, &err));
+    int mthresh = vsh::int64ToIntS(vsapi->mapGetInt(in, "mthresh", 0, &err));
     if (err)
         mthresh = 5;
 
-    const char *d2v = vsapi->propGetData(in, "d2v", 0, &err);
+    const char *d2v = vsapi->mapGetData(in, "d2v", 0, &err);
     if (err)
         d2v = "";
 
-    int ovrDefault = int64ToIntS(vsapi->propGetInt(in, "ovrDefault", 0, &err));
+    int ovrDefault = vsh::int64ToIntS(vsapi->mapGetInt(in, "ovrDefault", 0, &err));
     if (err)
         ovrDefault = 0;
 
-    int flags = int64ToIntS(vsapi->propGetInt(in, "flags", 0, &err));
+    int flags = vsh::int64ToIntS(vsapi->mapGetInt(in, "flags", 0, &err));
     if (err)
         flags = 4;
 
-    double scthresh = vsapi->propGetFloat(in, "scthresh", 0, &err);
+    double scthresh = vsapi->mapGetFloat(in, "scthresh", 0, &err);
     if (err)
         scthresh = 12.0;
 
-    int micout = int64ToIntS(vsapi->propGetInt(in, "micout", 0, &err));
+    int micout = vsh::int64ToIntS(vsapi->mapGetInt(in, "micout", 0, &err));
     if (err)
         micout = 0;
 
-    int micmatching = int64ToIntS(vsapi->propGetInt(in, "micmatching", 0, &err));
+    int micmatching = vsh::int64ToIntS(vsapi->mapGetInt(in, "micmatching", 0, &err));
     if (err)
         micmatching = 1;
 
-    const char *trimIn = vsapi->propGetData(in, "trimIn", 0, &err);
+    const char *trimIn = vsapi->mapGetData(in, "trimIn", 0, &err);
     if (err)
         trimIn = "";
 
-    bool hint = !!vsapi->propGetInt(in, "hint", 0, &err);
+    bool hint = !!vsapi->mapGetInt(in, "hint", 0, &err);
     if (err)
         hint = true;
 
-    int metric = int64ToIntS(vsapi->propGetInt(in, "metric", 0, &err));
+    int metric = vsh::int64ToIntS(vsapi->mapGetInt(in, "metric", 0, &err));
     if (err)
         metric = 0;
 
-    bool batch = !!vsapi->propGetInt(in, "batch", 0, &err);
+    bool batch = !!vsapi->mapGetInt(in, "batch", 0, &err);
     if (err)
         batch = false;
 
-    bool ubsco = !!vsapi->propGetInt(in, "ubsco", 0, &err);
+    bool ubsco = !!vsapi->mapGetInt(in, "ubsco", 0, &err);
     if (err)
         ubsco = true;
 
-    bool mmsco = !!vsapi->propGetInt(in, "mmsco", 0, &err);
+    bool mmsco = !!vsapi->mapGetInt(in, "mmsco", 0, &err);
     if (err)
         mmsco = true;
 
-    int opt = int64ToIntS(vsapi->propGetInt(in, "opt", 0, &err));
+    int opt = vsh::int64ToIntS(vsapi->mapGetInt(in, "opt", 0, &err));
     if (err)
         opt = 4;
 
 
-    VSNodeRef *clip = vsapi->propGetNode(in, "clip", 0, nullptr);
+    VSNode *clip = vsapi->mapGetNode(in, "clip", 0, nullptr);
 
     TFM *tfm_data;
 
@@ -301,117 +279,102 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, void *userData, VSCore 
                        MI, chroma, blockx, blocky, y0, y1, d2v, ovrDefault, flags, scthresh, micout, micmatching, trimIn, hint,
                        metric, batch, ubsco, mmsco, opt, vsapi, core);
     } catch (const TIVTCError& e) {
-        vsapi->setError(out, e.what());
+        vsapi->mapSetError(out, e.what());
 
         vsapi->freeNode(clip);
 
         return;
     }
 
-    int filter_mode = fmParallelRequests; /// It's possible fmParallel could be used in some situations. Study the matter.
-    int filter_flags = 0;
     // mode 7 requires linear access to function correctly, and so does d2v duplicate detection:
-    // it decides frame n from the match chosen for frame n-1. Keep this condition in sync with
-    // TFM::linearAccess, which gates the state that may only be trusted under linear access.
-    if (mode == 7 || d2v[0] != '\0') {
-        filter_mode = fmSerial;
-        filter_flags = nfMakeLinear;
-    }
-    vsapi->createFilter(in, out, "TFM", tfmInit, tfmGetFrame, tfmFree, filter_mode, filter_flags, tfm_data, core);
+    // it decides frame n from the match chosen for frame n-1. API 3 could ask the core to enforce
+    // that with nfMakeLinear; API 4 has no equivalent (setLinearFilter only enables the cacheFrame
+    // API for filters that *produce* linearly), so these modes run serialized and TFM itself
+    // rejects out-of-order requests. Keep this condition in sync with TFM::linearAccess.
+    const bool needLinear = (mode == 7 || d2v[0] != '\0');
 
-    if (vsapi->getError(out))
+    // TFM reads prv/src/nxt, so any given source frame feeds three output frames: rpGeneral.
+    VSFilterDependency tfm_deps[] = {{ clip, rpGeneral }};
+    VSNode *tfm_node = vsapi->createVideoFilter2("TFM", tfm_data->vi, tfmGetFrame, tfmFree,
+        needLinear ? fmUnordered : fmParallelRequests, tfm_deps, 1, tfm_data, core);
+    if (!tfm_node) {
+        // On failure the core neither takes the dependency references nor calls the free
+        // callback, so the instance (which owns the clip reference) is ours to destroy.
+        delete tfm_data;
+        vsapi->mapSetError(out, "TFM: failed to create the filter node.");
         return;
-
-
-    if (PP > 4) {
-        VSMap *params = vsapi->createMap();
-        VSNodeRef *node = vsapi->propGetNode(out, "clip", 0, nullptr);
-        vsapi->propSetNode(params, "clip", node, paReplace);
-        vsapi->freeNode(node);
-        VSPlugin *std_plugin = vsapi->getPluginById("com.vapoursynth.std", core);
-        VSMap *ret = vsapi->invoke(std_plugin, "Cache", params);
-        vsapi->freeMap(params);
-        if (vsapi->getError(ret)) {
-            char error[512] = { 0 };
-            snprintf(error, 512, "TFM: failed to invoke std.Cache: %s", vsapi->getError(ret));
-            vsapi->freeMap(ret);
-            vsapi->setError(out, error);
-            return;
-        }
-        node = vsapi->propGetNode(ret, "clip", 0, nullptr);
-        vsapi->freeMap(ret);
-        vsapi->propSetNode(out, "clip", node, paReplace);
-        vsapi->freeNode(node);
     }
+
+    // No std.Cache here: API 4 inserts and sizes caches automatically.
 
     if (PP > 1) {
-        VSNodeRef *clip2 = vsapi->propGetNode(in, "clip2", 0, &err);
-
-        VSNodeRef *node = vsapi->propGetNode(out, "clip", 0, nullptr);
+        VSNode *clip2 = vsapi->mapGetNode(in, "clip2", 0, &err);
 
         TFMPP *tfmpp_data;
 
         try {
-            tfmpp_data = new TFMPP(node, PP, mthresh, ovr, display, clip2, hint, opt, vsapi, core);
+            tfmpp_data = new TFMPP(tfm_node, PP, mthresh, ovr, display, clip2, hint, opt, vsapi, core);
         } catch (const TIVTCError& e) {
-            vsapi->setError(out, e.what());
+            vsapi->mapSetError(out, e.what());
 
-            vsapi->freeNode(node);
+            vsapi->freeNode(tfm_node);
             vsapi->freeNode(clip2);
 
             return;
         }
 
-        // createFilter uses paAppend when adding the node to the "out" map, so clear the existing node first.
-        vsapi->propDeleteKey(out, "clip");
+        // TFMPP reads n-1/n/n+1 from TFM depending on the effective PP, and frame n from clip2.
+        VSFilterDependency pp_deps[2];
+        int numDeps = 0;
+        pp_deps[numDeps++] = { tfm_node, rpGeneral };
+        if (clip2)
+            pp_deps[numDeps++] = { clip2, rpGeneral };
 
-        vsapi->createFilter(in, out, "TFMPP", tfmppInit, tfmppGetFrame, tfmppFree, fmParallelRequests, 0, tfmpp_data, core);
+        VSNode *pp_node = vsapi->createVideoFilter2("TFMPP", tfmpp_data->vi, tfmppGetFrame, tfmppFree,
+            fmParallelRequests, pp_deps, numDeps, tfmpp_data, core);
+        if (!pp_node) {
+            delete tfmpp_data; // owns and frees tfm_node and clip2
+            vsapi->mapSetError(out, "TFM: failed to create the TFMPP filter node.");
+            return;
+        }
+        tfm_node = pp_node;
     }
+
+    vsapi->mapConsumeNode(out, "clip", tfm_node, maReplace);
 
     if (display) {
         // text.FrameProps won't print the TFMDisplay property because it is too long,
         // so we use text.Text with std.FrameEval instead.
         VSMap *params = vsapi->createMap();
-        VSNodeRef *node = vsapi->propGetNode(out, "clip", 0, nullptr);
-        vsapi->propSetNode(params, "clip", node, paReplace);
-        vsapi->propSetNode(params, "prop_src", node, paReplace);
-        VSFuncRef *displayFuncRef = vsapi->createFunc(tivtcDisplayFunc<DisplayTFM>, vsapi->cloneNodeRef(node), (VSFreeFuncData)vsapi->freeNode, core, vsapi);
+        VSNode *node = vsapi->mapGetNode(out, "clip", 0, nullptr);
+        vsapi->mapSetNode(params, "clip", node, maReplace);
+        vsapi->mapSetNode(params, "prop_src", node, maReplace);
+        VSFunction *displayFuncRef = vsapi->createFunction(tivtcDisplayFunc<DisplayTFM>, vsapi->addNodeRef(node), (VSFreeFunctionData)vsapi->freeNode, core);
         vsapi->freeNode(node);
-        vsapi->propSetFunc(params, "eval", displayFuncRef, paReplace);
-        vsapi->freeFunc(displayFuncRef);
-        VSPlugin *std_plugin = vsapi->getPluginById("com.vapoursynth.std", core);
+        vsapi->mapSetFunction(params, "eval", displayFuncRef, maReplace);
+        vsapi->freeFunction(displayFuncRef);
+        VSPlugin *std_plugin = vsapi->getPluginByID("com.vapoursynth.std", core);
         VSMap *ret = vsapi->invoke(std_plugin, "FrameEval", params);
         vsapi->freeMap(params);
-        if (vsapi->getError(ret)) {
+        if (vsapi->mapGetError(ret)) {
             char error[512] = { 0 };
-            snprintf(error, 512, "TFM: failed to invoke std.FrameEval: %s", vsapi->getError(ret));
+            snprintf(error, 512, "TFM: failed to invoke std.FrameEval: %s", vsapi->mapGetError(ret));
             vsapi->freeMap(ret);
-            vsapi->setError(out, error);
+            vsapi->mapSetError(out, error);
             return;
         }
-        node = vsapi->propGetNode(ret, "clip", 0, nullptr);
+        node = vsapi->mapGetNode(ret, "clip", 0, nullptr);
         vsapi->freeMap(ret);
-        vsapi->propSetNode(out, "clip", node, paReplace);
+        vsapi->mapSetNode(out, "clip", node, maReplace);
         vsapi->freeNode(node);
     }
 }
 
 
-static void VS_CC tdecimateInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
-    (void)in;
-    (void)out;
-    (void)core;
-
-    TDecimate *d = (TDecimate *) *instanceData;
-
-    vsapi->setVideoInfo(&d->vi, 1, node);
-}
-
-
-static const VSFrameRef *VS_CC tdecimateGetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
+static const VSFrame *VS_CC tdecimateGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
     (void)vsapi;
 
-    TDecimate *d = (TDecimate *) *instanceData;
+    TDecimate *d = (TDecimate *)instanceData;
 
     return d->GetFrame(n, activationReason, frameData, frameCtx, core);
 }
@@ -432,161 +395,161 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, void *userData, V
 
     int err;
 
-    VSNodeRef *clip = vsapi->propGetNode(in, "clip", 0, nullptr); /// move lower if possible
+    VSNode *clip = vsapi->mapGetNode(in, "clip", 0, nullptr); /// move lower if possible
 
-    int mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, &err));
+    int mode = vsh::int64ToIntS(vsapi->mapGetInt(in, "mode", 0, &err));
     if (err)
         mode = 0;
 
-    int cycleR = int64ToIntS(vsapi->propGetInt(in, "cycleR", 0, &err));
+    int cycleR = vsh::int64ToIntS(vsapi->mapGetInt(in, "cycleR", 0, &err));
     if (err)
         cycleR = 1;
 
-    int cycle = int64ToIntS(vsapi->propGetInt(in, "cycle", 0, &err));
+    int cycle = vsh::int64ToIntS(vsapi->mapGetInt(in, "cycle", 0, &err));
     if (err)
         cycle = 5;
 
-    double rate = vsapi->propGetFloat(in, "rate", 0, &err);
+    double rate = vsapi->mapGetFloat(in, "rate", 0, &err);
     if (err)
         rate = 23.976;
 
-    bool chroma = !!vsapi->propGetInt(in, "chroma", 0, &err);
+    bool chroma = !!vsapi->mapGetInt(in, "chroma", 0, &err);
     if (err)
         chroma = true;
 
     {
         const VSVideoInfo *vi = vsapi->getVideoInfo(clip);
-        if (vi->format && vi->format->colorFamily == cmGray)
+        if (vi->format.colorFamily == cfGray)
             chroma = false;
     }
 
-    double dupThresh = vsapi->propGetFloat(in, "dupThresh", 0, &err);
+    double dupThresh = vsapi->mapGetFloat(in, "dupThresh", 0, &err);
     if (err)
         dupThresh = mode == 7 ? (chroma ? 0.4 : 0.5)
                               : (chroma ? 1.1 : 1.4);
 
-    double vidThresh = vsapi->propGetFloat(in, "vidThresh", 0, &err);
+    double vidThresh = vsapi->mapGetFloat(in, "vidThresh", 0, &err);
     if (err)
         vidThresh = mode == 7 ? (chroma ? 3.5 : 4.0)
                               : (chroma ? 1.1 : 1.4);
 
-    double sceneThresh = vsapi->propGetFloat(in, "sceneThresh", 0, &err);
+    double sceneThresh = vsapi->mapGetFloat(in, "sceneThresh", 0, &err);
     if (err)
         sceneThresh = 15;
 
-    int hybrid = int64ToIntS(vsapi->propGetInt(in, "hybrid", 0, &err));
+    int hybrid = vsh::int64ToIntS(vsapi->mapGetInt(in, "hybrid", 0, &err));
     if (err)
         hybrid = 0;
 
-    int vidDetect = int64ToIntS(vsapi->propGetInt(in, "vidDetect", 0, &err));
+    int vidDetect = vsh::int64ToIntS(vsapi->mapGetInt(in, "vidDetect", 0, &err));
     if (err)
         vidDetect = 3;
 
-    int conCycle = int64ToIntS(vsapi->propGetInt(in, "conCycle", 0, &err));
+    int conCycle = vsh::int64ToIntS(vsapi->mapGetInt(in, "conCycle", 0, &err));
     if (err)
         conCycle = vidDetect >= 3 ? 1 : 2;
 
-    int conCycleTP = int64ToIntS(vsapi->propGetInt(in, "conCycleTP", 0, &err));
+    int conCycleTP = vsh::int64ToIntS(vsapi->mapGetInt(in, "conCycleTP", 0, &err));
     if (err)
         conCycleTP = vidDetect >= 3 ? 1 : 2;
 
-    const char *ovr = vsapi->propGetData(in, "ovr", 0, &err);
+    const char *ovr = vsapi->mapGetData(in, "ovr", 0, &err);
     if (err)
         ovr = "";
 
-    const char *output = vsapi->propGetData(in, "output", 0, &err);
+    const char *output = vsapi->mapGetData(in, "output", 0, &err);
     if (err)
         output = "";
 
-    const char *input = vsapi->propGetData(in, "input", 0, &err);
+    const char *input = vsapi->mapGetData(in, "input", 0, &err);
     if (err)
         input = "";
 
-    const char *tfmIn = vsapi->propGetData(in, "tfmIn", 0, &err);
+    const char *tfmIn = vsapi->mapGetData(in, "tfmIn", 0, &err);
     if (err)
         tfmIn = "";
 
-    const char *mkvOut = vsapi->propGetData(in, "mkvOut", 0, &err);
+    const char *mkvOut = vsapi->mapGetData(in, "mkvOut", 0, &err);
     if (err)
         mkvOut = "";
 
-    int nt = int64ToIntS(vsapi->propGetInt(in, "nt", 0, &err));
+    int nt = vsh::int64ToIntS(vsapi->mapGetInt(in, "nt", 0, &err));
     if (err)
         nt = 0;
 
-    int blockx = int64ToIntS(vsapi->propGetInt(in, "blockx", 0, &err));
+    int blockx = vsh::int64ToIntS(vsapi->mapGetInt(in, "blockx", 0, &err));
     if (err)
         blockx = 32;
 
-    int blocky = int64ToIntS(vsapi->propGetInt(in, "blocky", 0, &err));
+    int blocky = vsh::int64ToIntS(vsapi->mapGetInt(in, "blocky", 0, &err));
     if (err)
         blocky = 32;
 
-    bool debug = !!vsapi->propGetInt(in, "debug", 0, &err);
+    bool debug = !!vsapi->mapGetInt(in, "debug", 0, &err);
     if (err)
         debug = false;
 
-    bool display = !!vsapi->propGetInt(in, "display", 0, &err);
+    bool display = !!vsapi->mapGetInt(in, "display", 0, &err);
     if (err)
         display = false;
 
-    int vfrDec = int64ToIntS(vsapi->propGetInt(in, "vfrDec", 0, &err));
+    int vfrDec = vsh::int64ToIntS(vsapi->mapGetInt(in, "vfrDec", 0, &err));
     if (err)
         vfrDec = 1;
 
-    bool batch = !!vsapi->propGetInt(in, "batch", 0, &err);
+    bool batch = !!vsapi->mapGetInt(in, "batch", 0, &err);
     if (err)
         batch = false;
 
-    bool tcfv1 = !!vsapi->propGetInt(in, "tcfv1", 0, &err);
+    bool tcfv1 = !!vsapi->mapGetInt(in, "tcfv1", 0, &err);
     if (err)
         tcfv1 = true;
 
-    bool se = !!vsapi->propGetInt(in, "se", 0, &err);
+    bool se = !!vsapi->mapGetInt(in, "se", 0, &err);
     if (err)
         se = false;
 
-    bool exPP = !!vsapi->propGetInt(in, "exPP", 0, &err);
+    bool exPP = !!vsapi->mapGetInt(in, "exPP", 0, &err);
     if (err)
         exPP = false;
 
-    int maxndl = int64ToIntS(vsapi->propGetInt(in, "maxndl", 0, &err));
+    int maxndl = vsh::int64ToIntS(vsapi->mapGetInt(in, "maxndl", 0, &err));
     if (err)
         maxndl = -200;
 
-    bool m2PA = !!vsapi->propGetInt(in, "m2PA", 0, &err);
+    bool m2PA = !!vsapi->mapGetInt(in, "m2PA", 0, &err);
     if (err)
         m2PA = false;
 
-    bool denoise = !!vsapi->propGetInt(in, "denoise", 0, &err);
+    bool denoise = !!vsapi->mapGetInt(in, "denoise", 0, &err);
     if (err)
         denoise = false;
 
-    bool noblend = !!vsapi->propGetInt(in, "noblend", 0, &err);
+    bool noblend = !!vsapi->mapGetInt(in, "noblend", 0, &err);
     if (err)
         noblend = true;
 
-    bool ssd = !!vsapi->propGetInt(in, "ssd", 0, &err);
+    bool ssd = !!vsapi->mapGetInt(in, "ssd", 0, &err);
     if (err)
         ssd = false;
 
-    bool hint = !!vsapi->propGetInt(in, "hint", 0, &err);
+    bool hint = !!vsapi->mapGetInt(in, "hint", 0, &err);
     if (err)
         hint = true;
 
-    VSNodeRef *clip2 = vsapi->propGetNode(in, "clip2", 0, &err);
+    VSNode *clip2 = vsapi->mapGetNode(in, "clip2", 0, &err);
     if (err)
-        clip2 = vsapi->cloneNodeRef(clip); // simplifies the code in the getframe functions
+        clip2 = vsapi->addNodeRef(clip); // simplifies the code in the getframe functions
 
-    int sdlim = int64ToIntS(vsapi->propGetInt(in, "sdlim", 0, &err));
+    int sdlim = vsh::int64ToIntS(vsapi->mapGetInt(in, "sdlim", 0, &err));
     if (err)
         sdlim = 0;
 
-    int opt = int64ToIntS(vsapi->propGetInt(in, "opt", 0, &err));
+    int opt = vsh::int64ToIntS(vsapi->mapGetInt(in, "opt", 0, &err));
     if (err)
         opt = 4;
 
-    const char *orgOut = vsapi->propGetData(in, "orgOut", 0, &err);
+    const char *orgOut = vsapi->mapGetData(in, "orgOut", 0, &err);
     if (err)
         orgOut = "";
 
@@ -596,7 +559,7 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, void *userData, V
     try {
         tdecimate_data = new TDecimate(clip, mode, cycleR, cycle, rate, dupThresh, vidThresh, sceneThresh, hybrid, vidDetect, conCycle, conCycleTP, ovr, output, input, tfmIn, mkvOut, nt, blockx, blocky, debug, display, vfrDec, batch, tcfv1, se, chroma, exPP, maxndl, m2PA, denoise, noblend, ssd, hint, clip2, sdlim, opt, orgOut, vsapi, core);
     } catch (const TIVTCError& e) {
-        vsapi->setError(out, e.what());
+        vsapi->mapSetError(out, e.what());
 
         vsapi->freeNode(clip);
         vsapi->freeNode(clip2);
@@ -604,66 +567,66 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, void *userData, V
         return;
     }
 
-    int filter_modes[8] = {
+    const int filter_modes[8] = {
         fmParallelRequests,
         fmParallelRequests,
         fmUnordered, // Either fmUnordered or fmParallelRequests. I figured out which one but I didn't write it down and forgot.
-        fmSerial,
+        fmUnordered, // mode 3 also needs linear access; it detects and reports violations itself
         fmParallelRequests, // mode 4: serialized production - calcMetric() shares the member `diff` scratch buffer
         fmParallel,
         fmParallel,
         fmUnordered
     };
-    int filter_flags[8] = {
-        0,
-        0,
-        0,
-        nfMakeLinear,
-        0,
-        0,
-        0,
-        0
-    };
 
-    vsapi->createFilter(in, out, "TDecimate", tdecimateInit, tdecimateGetFrame, tdecimateFree, filter_modes[mode], filter_flags[mode], tdecimate_data, core);
-
-    if (vsapi->getError(out))
+    // Every mode reads arbitrary frames of the source (decimation reorders them), and both child
+    // and clip2 can be read for the same output frame, so neither dependency is spatial.
+    VSFilterDependency dec_deps[] = {{ clip, rpGeneral }, { clip2, rpGeneral }};
+    VSNode *dec_node = vsapi->createVideoFilter2("TDecimate", &tdecimate_data->vi, tdecimateGetFrame, tdecimateFree,
+        filter_modes[mode], dec_deps, 2, tdecimate_data, core);
+    if (!dec_node) {
+        // The core took neither the dependency references nor ownership of the instance on
+        // failure; the instance owns clip and clip2 and frees them on destruction.
+        delete tdecimate_data;
+        vsapi->mapSetError(out, "TDecimate: failed to create the filter node.");
         return;
+    }
+
+    vsapi->mapConsumeNode(out, "clip", dec_node, maReplace);
 
 
     if (display) {
         // text.FrameProps won't print the TDecimateDisplay property because it is too long,
         // so we use text.Text with std.FrameEval instead.
         VSMap *params = vsapi->createMap();
-        VSNodeRef *node = vsapi->propGetNode(out, "clip", 0, nullptr);
-        vsapi->propSetNode(params, "clip", node, paReplace);
-        vsapi->propSetNode(params, "prop_src", node, paReplace);
-        VSFuncRef *displayFuncRef = vsapi->createFunc(tivtcDisplayFunc<DisplayTDecimate>, vsapi->cloneNodeRef(node), (VSFreeFuncData)vsapi->freeNode, core, vsapi);
+        VSNode *node = vsapi->mapGetNode(out, "clip", 0, nullptr);
+        vsapi->mapSetNode(params, "clip", node, maReplace);
+        vsapi->mapSetNode(params, "prop_src", node, maReplace);
+        VSFunction *displayFuncRef = vsapi->createFunction(tivtcDisplayFunc<DisplayTDecimate>, vsapi->addNodeRef(node), (VSFreeFunctionData)vsapi->freeNode, core);
         vsapi->freeNode(node);
-        vsapi->propSetFunc(params, "eval", displayFuncRef, paReplace);
-        vsapi->freeFunc(displayFuncRef);
-        VSPlugin *std_plugin = vsapi->getPluginById("com.vapoursynth.std", core);
+        vsapi->mapSetFunction(params, "eval", displayFuncRef, maReplace);
+        vsapi->freeFunction(displayFuncRef);
+        VSPlugin *std_plugin = vsapi->getPluginByID("com.vapoursynth.std", core);
         VSMap *ret = vsapi->invoke(std_plugin, "FrameEval", params);
         vsapi->freeMap(params);
-        if (vsapi->getError(ret)) {
+        if (vsapi->mapGetError(ret)) {
             char error[512] = { 0 };
-            snprintf(error, 512, "TDecimate: failed to invoke std.FrameEval: %s", vsapi->getError(ret));
+            snprintf(error, 512, "TDecimate: failed to invoke std.FrameEval: %s", vsapi->mapGetError(ret));
             vsapi->freeMap(ret);
-            vsapi->setError(out, error);
+            vsapi->mapSetError(out, error);
             return;
         }
-        node = vsapi->propGetNode(ret, "clip", 0, nullptr);
+        node = vsapi->mapGetNode(ret, "clip", 0, nullptr);
         vsapi->freeMap(ret);
-        vsapi->propSetNode(out, "clip", node, paReplace);
+        vsapi->mapSetNode(out, "clip", node, maReplace);
         vsapi->freeNode(node);
     }
 }
 
 
-VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegisterFunction registerFunc, VSPlugin *plugin) {
-    configFunc("com.nodame.tivtc", "tivtc", "Field matching and decimation", (3 << 16) | 5, 1, plugin);
-    registerFunc("TFM",
-                 "clip:clip;"
+VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
+    vspapi->configPlugin("com.nodame.tivtc", "tivtc", "Field matching and decimation", VS_MAKE_VERSION(3, 5), VAPOURSYNTH_API_VERSION, 0, plugin);
+    vspapi->registerFunction("TFM",
+                 "clip:vnode;"
                  "order:int:opt;"
                  "field:int:opt;"
                  "mode:int:opt;"
@@ -685,7 +648,7 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                  "y0:int:opt;"
                  "y1:int:opt;"
                  "mthresh:int:opt;"
-                 "clip2:clip:opt;"
+                 "clip2:vnode:opt;"
                  "d2v:data:opt;"
                  "ovrDefault:int:opt;"
                  "flags:int:opt;"
@@ -699,10 +662,10 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                  "ubsco:int:opt;"
                  "mmsco:int:opt;"
                  "opt:int:opt;"
-                 , tfmCreate, nullptr, plugin);
+                 , "clip:vnode;", tfmCreate, nullptr, plugin);
 
-    registerFunc("TDecimate",
-                 "clip:clip;"
+    vspapi->registerFunction("TDecimate",
+                 "clip:vnode;"
                  "mode:int:opt;"
                  "cycleR:int:opt;"
                  "cycle:int:opt;"
@@ -736,9 +699,9 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                  "noblend:int:opt;"
                  "ssd:int:opt;"
                  "hint:int:opt;"
-                 "clip2:clip:opt;"
+                 "clip2:vnode:opt;"
                  "sdlim:int:opt;"
                  "opt:int:opt;"
                  "orgOut:data:opt;"
-                 , tdecimateCreate, nullptr, plugin);
+                 , "clip:vnode;", tdecimateCreate, nullptr, plugin);
 }

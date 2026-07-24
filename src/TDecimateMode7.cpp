@@ -27,7 +27,7 @@
 #include <inttypes.h>
 #include <algorithm>
 
-const VSFrameRef * TDecimate::GetFrameMode7(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame * TDecimate::GetFrameMode7(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
     if (activationReason != arInitial && activationReason != arAllFramesReady)
         return nullptr;
@@ -64,8 +64,8 @@ const VSFrameRef * TDecimate::GetFrameMode7(int n, int activationReason, void **
             } else {
               int blockNI, blocksI;
               uint64_t metricF;
-              const VSFrameRef *frame1 = vsapi->getFrameFilter(i - 1, child, frameCtx);
-              const VSFrameRef *frame2 = vsapi->getFrameFilter(i, child, frameCtx);
+              const VSFrame *frame1 = vsapi->getFrameFilter(i - 1, child, frameCtx);
+              const VSFrame *frame2 = vsapi->getFrameFilter(i, child, frameCtx);
               metricsOutArray[i << 1] =
                 calcMetric(frame1, frame2,
                   vi_child, blockNI, blocksI, metricF, false, core);
@@ -152,11 +152,11 @@ const VSFrameRef * TDecimate::GetFrameMode7(int n, int activationReason, void **
       return nullptr;
   }
 
-  const VSFrameRef *src = vsapi->getFrameFilter(ret, clip2, frameCtx);
+  const VSFrame *src = vsapi->getFrameFilter(ret, clip2, frameCtx);
 
   if (display)
   {
-    VSFrameRef *dst = vsapi->copyFrame(src, core);
+    VSFrame *dst = vsapi->copyFrame(src, core);
     vsapi->freeFrame(src);
 
 #define SZ 160
@@ -186,8 +186,8 @@ const VSFrameRef * TDecimate::GetFrameMode7(int n, int activationReason, void **
     }
 #undef SZ
 
-    VSMap *props = vsapi->getFramePropsRW(dst);
-    vsapi->propSetData(props, PROP_TDecimateDisplay, text.c_str(), text.size(), paReplace);
+    VSMap *props = vsapi->getFramePropertiesRW(dst);
+    vsapi->mapSetData(props, PROP_TDecimateDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
 
     return dst;
   }

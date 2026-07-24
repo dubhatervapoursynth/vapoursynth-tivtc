@@ -331,15 +331,15 @@ template void check_combing_c_Metric1<uint16_t, int64_t>(const uint16_t* srcp, u
 
 // instantiate for 8x8
 
-void copyFrame(VSFrameRef *dst, const VSFrameRef *src, const VSAPI *vsapi)
+void copyFrame(VSFrame *dst, const VSFrame *src, const VSAPI *vsapi)
 {
   // bit depth independent
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
   const int np = format->numPlanes;
   for (int b = 0; b < np; ++b)
   {
     const int plane = b;
-    vs_bitblt(vsapi->getWritePtr(dst, plane), vsapi->getStride(dst, plane), vsapi->getReadPtr(src, plane),
+    vsh::bitblt(vsapi->getWritePtr(dst, plane), vsapi->getStride(dst, plane), vsapi->getReadPtr(src, plane),
       vsapi->getStride(src, plane), vsapi->getFrameWidth(src, plane) * format->bytesPerSample, vsapi->getFrameHeight(src, plane));
   }
 }
