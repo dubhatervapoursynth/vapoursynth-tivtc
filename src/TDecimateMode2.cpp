@@ -459,12 +459,9 @@ double TDecimate::buildDecStrategy()
       }
     }
     mode2_decA.resize(0);
-//    if (debug)
-//    {
-//      sprintf(buf, "drop count = %d  expected = %d\n", vi.numFrames - v,
-//        vi.numFrames - (int)(vi.numFrames*aRate / fps));
-//      OutputDebugString(buf);
-//    }
+    if (debug)
+      logInfo(vsapi, vscore, "drop count = %d  expected = %d", vi.numFrames - v,
+        vi.numFrames - (int)(vi.numFrames*aRate / fps));
     mode2_numCycles = -20;
   }
   else
@@ -505,12 +502,9 @@ double TDecimate::buildDecStrategy()
       }
       aLUT[x * 5 + 3] = x*clength + add - dropCount;
     }
-//    if (debug)
-//    {
-//      sprintf(buf, "drop count = %d  expected = %d\n", dropCount,
-//        vi.numFrames - (int)(vi.numFrames*aRate / fps));
-//      OutputDebugString(buf);
-//    }
+    if (debug)
+      logInfo(vsapi, vscore, "drop count = %d  expected = %d", dropCount,
+        vi.numFrames - (int)(vi.numFrames*aRate / fps));
     if (clength != 5)
     {
       prev.setSize(clength);
@@ -520,18 +514,16 @@ double TDecimate::buildDecStrategy()
     prev.length = curr.length = next.length = clength;
   }
   memcpy(mode2_cfs, rc, 10 * sizeof(int));
-//  if (debug)
-//  {
-//    sprintf(buf, "rate = %f  actual rate = %f\n", rate, aRate);
-//    OutputDebugString(buf);
-//    sprintf(buf, "mode2_num = %d  mode2_den = %d  numCycles = %d  clength = %d\n", mode2_num, mode2_den, mode2_numCycles, clength);
-//    OutputDebugString(buf);
-//    for (int x = 0; x < 10; ++x)
-//    {
-//      if (mode2_cfs[x] <= 0) break;
-//      sprintf(buf, "mode2_cfs %d = %d\n", x, mode2_cfs[x]);
-//      OutputDebugString(buf);
-//    }
-//  }
+  if (debug)
+  {
+    logInfo(vsapi, vscore, "rate = %f  actual rate = %f", rate, aRate);
+    logInfo(vsapi, vscore, "mode2_num = %d  mode2_den = %d  numCycles = %d  clength = %d",
+      mode2_num, mode2_den, mode2_numCycles, clength);
+    for (int x = 0; x < 10; ++x)
+    {
+      if (mode2_cfs[x] <= 0) break;
+      logInfo(vsapi, vscore, "mode2_cfs %d = %d", x, mode2_cfs[x]);
+    }
+  }
   return aRate;
 }

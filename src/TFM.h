@@ -74,6 +74,7 @@ private:
   std::string output;
   std::string outputC;
   bool debug, display;
+  VSCore *vscore; // stored only so debug logging can reach logMessage
   int slow;
   bool mChroma;
   int cNum;
@@ -173,7 +174,7 @@ private:
   // Shared epilogue of the three compareFields variants.
   int decideMatch(int match1, int match2, uint64_t accumPc, uint64_t accumNc,
     uint64_t accumPm, uint64_t accumNm, int firstRung, int bits_per_pixel,
-    int &norm1, int &norm2, int &mtn1, int &mtn2) const;
+    int &norm1, int &norm2, int &mtn1, int &mtn2, int n) const;
 
   int compareFields(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
     int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n);
@@ -211,9 +212,6 @@ private:
     const VSFrame *src, const VSFrame *nxt);
 
   void putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, const int mics[5]) const;
-//  template<typename pixel_t>
-//  void putHint_core(VSFrame *dst, int match, int combed, bool d2vfilm);
-
   void parseD2V();
   int D2V_find_and_correct(std::vector<int> &array, bool &found, int &tff) const;
   void D2V_find_fix(int a1, int a2, int sync, int &f1, int &f2, int &change) const;
@@ -263,7 +261,4 @@ public:
     bool _mmsco, int _opt, const VSAPI *_vsapi, VSCore *core);
   ~TFM();
 
-//  int __stdcall SetCacheHints(int cachehints, int frame_range) override {
-//    return cachehints == CACHE_GET_MTMODE ? MT_SERIALIZED : 0;
-//  }
 };

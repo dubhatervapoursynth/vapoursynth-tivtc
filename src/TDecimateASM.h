@@ -26,7 +26,6 @@
 #ifndef __TDECIMATEASM_H__
 #define __TDECIMATEASM_H__
 
-//#include <windows.h>
 #include <VapourSynth4.h>
 #include "internal.h"
 #include "TDecimate.h"

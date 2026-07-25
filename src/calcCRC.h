@@ -23,8 +23,6 @@
 **   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-//#include <windows.h>
-//#include "internal.h"
 #include <VapourSynth4.h>
 
 void calcCRC(VSNode *hclip, int stop, unsigned int& crc, const VSAPI *vsapi);

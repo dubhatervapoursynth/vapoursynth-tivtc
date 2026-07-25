@@ -23,7 +23,6 @@
 **   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-//#include "internal.h"
 #include "calcCRC.h"
 
 static const unsigned int Crc32Table[256] =
@@ -119,7 +118,6 @@ void calcCRC(VSNode *hclip, int stop, unsigned int &crc, const VSAPI *vsapi)
         crc = ptrCrcTable[(crc ^ *buffer++) & 0xFF] ^ (crc >> 8);
       buffer += modulo;
     }
-    //crc = crc ^ ~0U;
     vsapi->freeFrame(src);
   }
 }

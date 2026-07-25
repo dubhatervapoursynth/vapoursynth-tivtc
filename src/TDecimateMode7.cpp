@@ -126,28 +126,25 @@ const VSFrame * TDecimate::GetFrameMode7(int n, int activationReason, void **fra
       return nullptr;
   }
 
-//  if (debug)
-//  {
-//    sprintf(buf, "TDecimate:  ------------------------------------------\n");
-//    OutputDebugString(buf);
-//    sprintf(buf, "TDecimate:  inframe = %d  useframe = %d  chosen = %d\n", n, ret, chosen);
-//    OutputDebugString(buf);
-//    sprintf(buf, "TDecimate:  prev = %d  curr1 = %d  curr2 = %d  next = %d\n", prev_f,
-//      curr1_f, curr2_f, next_f);
-//    OutputDebugString(buf);
-//    for (int i = std::max(0, ret - 3); i <= std::min(ret + 3, nfrms); ++i)
-//    {
-//      sprintf(buf, "TDecimate:  %d:  %3.2f  %" PRIu64 "%s%s\n", i, double(metricsOutArray[i << 1])*100.0 / double(MAX_DIFF),
-//        metricsOutArray[i << 1], metricsOutArray[i << 1] < same_thresh ? "  (D)" :
-//        metricsOutArray[i << 1] > diff_thresh ? "  (N)" :
-//        aLUT[i] == 2 ? "  (N)" : aLUT[i] == 1 ? "  (S)" :
-//        aLUT[i] == 0 ? "  (D)" : "", wasChosen(i, n) ? "  *" : "");
-//      OutputDebugString(buf);
-//    }
-//  }
-
   if (requestChosenFrame(activationReason, frameData, ret, frameCtx))
       return nullptr;
+
+  if (debug)
+  {
+    logInfo(vsapi, vscore, "TDecimate:  ------------------------------------------");
+    logInfo(vsapi, vscore, "TDecimate:  inframe = %d  useframe = %d  chosen = %d", n, ret, chosen);
+    logInfo(vsapi, vscore, "TDecimate:  prev = %d  curr1 = %d  curr2 = %d  next = %d", prev_f,
+      curr1_f, curr2_f, next_f);
+    for (int i = std::max(0, ret - 3); i <= std::min(ret + 3, nfrms); ++i)
+    {
+      logInfo(vsapi, vscore, "TDecimate:  %d:  %3.2f  %" PRIu64 "%s%s", i,
+        double(metricsOutArray[i << 1])*100.0 / double(MAX_DIFF),
+        metricsOutArray[i << 1], metricsOutArray[i << 1] < same_thresh ? "  (D)" :
+        metricsOutArray[i << 1] > diff_thresh ? "  (N)" :
+        aLUT[i] == 2 ? "  (N)" : aLUT[i] == 1 ? "  (S)" :
+        aLUT[i] == 0 ? "  (D)" : "", wasChosen(i, n) ? "  *" : "");
+    }
+  }
 
   std::string body;
   if (display)

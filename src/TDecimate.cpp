@@ -145,6 +145,16 @@ VSFrame *TDecimate::renderOutputInfo(const OutputInfo *o, VSFrameContext *frameC
     }
     vsapi->freeFrame(frame1);
 
+    if (debug)
+    {
+        if (o->type == TwoFramesBlended)
+            logInfo(vsapi, vscore, "TDecimate:  inframe = %d  blending %d (%3.2f) + %d (%3.2f)  %s",
+                o->requested_frame_number, o->f1, o->a1, o->f2, o->a2, o->film ? "film" : "video");
+        else
+            logInfo(vsapi, vscore, "TDecimate:  inframe = %d  useframe = %d  %s",
+                o->requested_frame_number, o->chosen_frame_number, o->film ? "film" : "video");
+    }
+
     if (display)
         displayOutput(dst, o->requested_frame_number, o->chosen_frame_number, o->film,
             o->a1, o->a2, o->f1, o->f2);
@@ -217,8 +227,6 @@ const VSFrame * TDecimate::GetFrameMode01(int n, int activationReason, void **fr
 
   if (first_frame_in_cycle) {
       o->metrics.assign(curr.diffMetricsU.begin(), curr.diffMetricsU.begin() + cycle);
-//      o->metrics.resize(cycle);
-//          memcpy(o->metrics.data(), curr.diffMetricsU, cycle * sizeof(*o->metrics.data()));
   }
 
   if (curr.blend == 3)  // 2 dups detected
@@ -278,10 +286,8 @@ const VSFrame * TDecimate::GetFrameMode01(int n, int activationReason, void **fr
 
     if (f1 != 0)
     {
-//      if (debug) debugOutput2(n, 0, true, f1, f2, a1, a2);
       o->set(TwoFramesBlended, f1, f2, a1, a2, n, 0, true);
     } else {
-//    if (debug) debugOutput2(n, curr.frame + ret, true, f1, f2, a1, a2);
       o->set(SingleFrame, curr.frame + ret, -69, a1, a2, n, curr.frame + ret, true);
     }
 
@@ -306,7 +312,6 @@ const VSFrame * TDecimate::GetFrameMode01(int n, int activationReason, void **fr
       vsapi->setFilterError("TDecimate:  major internal error. Couldn't figure out which frame to return. Please report this ASAP!", frameCtx);
       return nullptr;
     }
-//    if (debug) debugOutput2(n, curr.frame + ret, curr.blend == 2 ? false : true, 0, 0, 0.0, 0.0);
 
     o->set(SingleFrame, curr.frame + ret, -69, 0.0, 0.0, n, curr.frame + ret, curr.blend != 2);
     o->requestFrames(clip2, frameCtx, vsapi);
@@ -316,7 +321,6 @@ const VSFrame * TDecimate::GetFrameMode01(int n, int activationReason, void **fr
   {
     if (hybrid == 3) // return source frame (hybrid=3 leaves video untouched)
     {
-//      if (debug) debugOutput2(n, n, false, 0, 0, 0.0, 0.0);
 
         // So.... did it not drop any frames up to this one? That's the only way output frame n corresponds to input frame n.
       o->set(SingleFrame, n, -69, 0.0, 0.0, n, n, false);
@@ -345,8 +349,6 @@ const VSFrame * TDecimate::GetFrameMode01(int n, int activationReason, void **fr
         o->f1 = f1;
         o->f2 = f2;
     }
-
-//    if (debug) debugOutput2(n, 0, false, f1, f2, a1, a2);
 
     o->requested_frame_number = n;
     o->chosen_frame_number = 0;
@@ -500,7 +502,6 @@ const VSFrame * TDecimate::GetFrameMode3(int n, int activationReason, void **fra
       fprintf(mkvOutF, "%d,%d,%4.6f\n", lastGroup - (lastType*(cycle - cycleR)), lastGroup - 1, mkvfps);
     if (retFrames == cycle - cycleR) ++lastType;
     else lastType = 0;
-//    if (debug) debugOutput1(n, retFrames == cycle ? false : true, curr.blend);
   }
 
   prebufferNextCycle(frameCtx, core);
@@ -515,7 +516,6 @@ const VSFrame * TDecimate::GetFrameMode3(int n, int activationReason, void **fra
     }
     else
     {
-//      if (debug) debugOutput2(n, lastCycle + (n - lastGroup), false, 0, 0, 0.0, 0.0);
 
       OutputInfo *o = new OutputInfo;
       *frameData = (void *)o;
@@ -541,7 +541,6 @@ const VSFrame * TDecimate::GetFrameMode3(int n, int activationReason, void **fra
     }
     else
     {
-//      if (debug) debugOutput2(n, curr.frame + ret, true, 0, 0, 0.0, 0.0);
 
       OutputInfo *o = new OutputInfo;
       *frameData = (void *)o;
@@ -620,12 +619,9 @@ const VSFrame * TDecimate::GetFrameMode4(int n, int activationReason, VSFrameCon
   vsapi->freeFrame(prv);
 
   double metricN = (metricU*100.0) / MAX_DIFF;
-//  if (debug)
-//  {
-//    sprintf(buf, "TDecimate:  frame %d  metric = %3.2f  metricF =  %" PRIu64 " (%3.2f)", n, metricN, metricF,
-//      (double)metricF*100.0 / (double)sceneDivU);
-//    OutputDebugString(buf);
-//  }
+  if (debug)
+    logInfo(vsapi, vscore, "TDecimate:  frame %d  metric = %3.2f  metricF =  %" PRIu64 " (%3.2f)",
+      n, metricN, metricF, (double)metricF*100.0 / (double)sceneDivU);
   if (output.size() && metricsOutArray.size())
   {
     metricsOutArray[n << 1] = metricU;
@@ -640,7 +636,6 @@ const VSFrame * TDecimate::GetFrameMode4(int n, int activationReason, VSFrameCon
 
   if (display)
   {
-//    if (blockN != -20) drawBox(src, blockx, blocky, blockN, xblocks, vi_clip2); /// figure out what drawBox does
 
 #define SZ 160
     char buf[SZ] = { 0 };
@@ -678,11 +673,8 @@ const VSFrame * TDecimate::GetFrameMode56(int n, int activationReason, VSFrameCo
 
   const VSFrame *src = vsapi->getFrameFilter(frame, clip2, frameCtx);
 
-//  if (debug)
-//  {
-//    sprintf(buf, "TDecimate:  inframe = %d  useframe = %d  (mode = %d)", n, frame, mode);
-//    OutputDebugString(buf);
-//  }
+  if (debug)
+    logInfo(vsapi, vscore, "TDecimate:  inframe = %d  useframe = %d  (mode = %d)", n, frame, mode);
 
   VSFrame *dst = vsapi->copyFrame(src, core);
   vsapi->freeFrame(src);
@@ -727,10 +719,6 @@ void TDecimate::calcMetricPreBuf(int n1, int n2, int pos, const VSVideoInfo *vit
   bool gethint, VSFrameContext *frameCtx, VSCore *core)
 {
   if (n2 > nbuf.maxFrame || n2 < 0) return;
-//  if (n2 < nbuf.frameSO || n2 >= nbuf.frameEO || n1 != n2 - 1 ||
-//    nbuf.frameSO + pos != n2)
-//    env->ThrowError("TDecimate:  internal error during pre-buffering (n1=%d,n2=%d,pos=%d,nbuf.FrameSO=%d,nBuf.frameEO=%d)!",
-//      n1, n2, pos, nbuf.frameSO, nbuf.frameEO);
   if (n2 == 0) n1 = 0;
   int blockNI, xblocksI;
   uint64_t metricF;
@@ -861,7 +849,6 @@ uint64_t TDecimate::calcMetric(const VSFrame *prevt, const VSFrame *currt, const
   uint64_t highestDiff = 0;
 
   struct CalcMetricData d;
-  //d.np = np;
   d.predenoise = predenoise;
   d.vi = *vit;
   d.chroma = chroma;
@@ -1038,7 +1025,6 @@ void TDecimate::calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *co
     }
 
     struct CalcMetricData d;
-    //d.np = np;
     d.predenoise = false; // done earlier
     d.vi = *vi_child;
     d.chroma = chroma;
@@ -1175,11 +1161,8 @@ bool TDecimate::checkForObviousDecFrame(Cycle &p, Cycle &c, Cycle &n)
     if (dups != 1 || cn != v) return false;
   }
   if (saved != cp && saved != cn) return false;
-//  if (debug)
-//  {
-//    sprintf(buf, "TDecimate:  obvious dec frame found  %d - %d!\n", saved, c.frameSO);
-//    OutputDebugString(buf);
-//  }
+  if (debug)
+    logInfo(vsapi, vscore, "TDecimate:  obvious dec frame found  %d - %d!", saved, c.frameSO);
   c.decimate[saved] = c.decimate2[saved] = 1;
   c.decSet = true;
   return true;
@@ -1216,11 +1199,8 @@ int TDecimate::checkForD2VDecFrame(Cycle &p, Cycle &c, Cycle &n)
     }
   }
   if (v != 1 || (savedV != savedM && savedV != savedL)) return -20;
-//  if (debug)
-//  {
-//    sprintf(buf, "TDecimate:  d2v dec frame found  %d - %d!\n", savedV, c.frameSO);
-//    OutputDebugString(buf);
-//  }
+  if (debug)
+    logInfo(vsapi, vscore, "TDecimate:  d2v dec frame found  %d - %d!", savedV, c.frameSO);
   return savedV;
 }
 
@@ -1311,11 +1291,9 @@ bool TDecimate::checkForTwoDropLongestString(Cycle &p, Cycle &c, Cycle &n)
     c.decimate[c1] = c.decimate2[c1] = 1;
     c.decimate[c2] = c.decimate2[c2] = 1;
     c.decSet = true;
-//    if (debug)
-//    {
-//      sprintf(buf, "TDecimate:  drop two frames longest string  %d:%d - %d!\n", c1, c2, c.frameSO);
-//      OutputDebugString(buf);
-//    }
+    if (debug)
+      logInfo(vsapi, vscore, "TDecimate:  drop two frames longest string  %d:%d - %d!",
+        c1, c2, c.frameSO);
   }
   return true;
 }
@@ -1446,11 +1424,9 @@ void TDecimate::mostSimilarDecDecision(Cycle &p, Cycle &c, Cycle &n)
         c.decimate[savedc1] = c.decimate2[savedc1] = 1;
         c.decimate[savedc2] = c.decimate2[savedc2] = 1;
         c.decSet = true;
-//        if (debug)
-//        {
-//          sprintf(buf, "TDecimate:  drop two frames most similar  %d:%d - %d!\n", savedc1, savedc2, c.frameSO);
-//          OutputDebugString(buf);
-//        }
+        if (debug)
+          logInfo(vsapi, vscore, "TDecimate:  drop two frames most similar  %d:%d - %d!",
+            savedc1, savedc2, c.frameSO);
       }
       return;
     }
@@ -1596,11 +1572,8 @@ void TDecimate::findDupStrings(Cycle &p, Cycle &c, Cycle &n)
     {
       if (usecp == 5) c1 = c2;
       c.decimate[c1] = c.decimate2[c1] = 1;
-//      if (debug)
-//      {
-//        sprintf(buf, "TDecimate:  usecp case %d - %d!\n", usecp, c.frameSO);
-//        OutputDebugString(buf);
-//      }
+      if (debug)
+        logInfo(vsapi, vscore, "TDecimate:  usecp case %d - %d!", usecp, c.frameSO);
       c.decSet = true;
       return;
     }
@@ -1609,11 +1582,8 @@ void TDecimate::findDupStrings(Cycle &p, Cycle &c, Cycle &n)
       c.blend = 3;
       c.decimate[c1] = c.decimate2[c1] = 1;
       c.decimate[c2] = c.decimate2[c2] = 1;
-//      if (debug)
-//      {
-//        sprintf(buf, "TDecimate:  usecp case %d - %d!\n", usecp, c.frameSO);
-//        OutputDebugString(buf);
-//      }
+      if (debug)
+        logInfo(vsapi, vscore, "TDecimate:  usecp case %d - %d!", usecp, c.frameSO);
       c.decSet = true;
       return;
     }
@@ -2323,8 +2293,6 @@ static bool reduce_float(float value, unsigned &num, unsigned &den)
 static bool FloatToFPS(double n, unsigned &num, unsigned &den)
 {
     /// check the rate in the caller
-//  if (n <= 0)
-//    env->ThrowError("TDecimate:  rate must be greater than 0.\n");
   float x;
   unsigned u = (unsigned)(n * 1001 + 0.5);
   x = float((u / 30000 * 30000) / 1001.0);
@@ -2407,13 +2375,6 @@ int TDecimate::runMode5DecimationPass(int passThrough, std::vector<int> &input_m
           {
             input_magic_numbers[i] = 2;
             ++count;
-#if 0
-            if ((f = tivtc_fopen("debug.txt", "a")) != nullptr) {
-              fprintf(f, "count=%03d b=%d w=%d i=%d \n", count, b, w, i);
-              fclose(f);
-              f = nullptr;
-            }
-#endif
           }
           else input_magic_numbers[i] = 0;
         }
@@ -2667,14 +2628,6 @@ void TDecimate::init_mode_5(VSCore *core) {
     ovrArray.resize(0);
   }
 
-#if 0
-  if ((f = tivtc_fopen("debug.txt", "a")) != nullptr) {
-    fprintf(f, "new_num_frames=%d vi.numFrames=%d count=%d\n", vi.numFrames - count, vi.numFrames, count);
-    fclose(f);
-    f = nullptr;
-  }
-#endif
-
   int64_t fpsNum = vi.fpsNum;
   int64_t frameNum = vi.fpsDen;
   vi.fpsNum = 0;
@@ -2699,7 +2652,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
   conCycleTP(_conCycleTP), vidDetect(_vidDetect), sceneThresh(_sceneThresh),
   conCycle(_conCycle), ovr(_ovr), input(_input),
   nt(_nt), output(_output), mkvOut(_mkvOut), tfmIn(_tfmIn), blockx(_blockx), blocky(_blocky),
-  vfrDec(_vfrDec), debug(_debug), display(_display), batch(_batch), tcfv1(_tcfv1), se(_se),
+  vfrDec(_vfrDec), debug(_debug), display(_display), vscore(core), batch(_batch), tcfv1(_tcfv1), se(_se),
   maxndl(_maxndl), chroma(_chroma), m2PA(_m2PA), exPP(_exPP),
   noblend(_noblend), predenoise(_predenoise), ssd(_ssd), sdlim(_sdlim),
   opt(_opt), clip2(_clip2), orgOut(_orgOut),
@@ -2800,11 +2753,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
   if (vi_clip2->format.bitsPerSample > 16)
     throw TIVTCError("TDecimate:  clip2: only 8-16 bit formats supported!");
 
-//  if (debug)
-//  {
-//    sprintf(buf, "TDecimate:  %s by tritical\n", VERSION);
-//    OutputDebugString(buf);
-//  }
+  if (debug) logInfo(vsapi, vscore, "TDecimate:  %s by tritical", VERSION);
 
   if (cycle > 5 && mode != 4 && mode != 6 && mode != 7)
   {
@@ -3424,10 +3373,6 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
     {
       if (curr.length < 0)
         throw TIVTCError("TDecimate:  unknown error with mode 2!");
-//      if (curr.length <= 50)
-//        child->SetCacheHints(CACHE_GENERIC, (curr.length * 2) + 1);
-//      else
-//        child->SetCacheHints(CACHE_GENERIC, 100);
       mode2_order.resize(std::max(curr.length + 10, 100));
       mode2_metrics.resize(std::max(curr.length + 10, 100));
     }

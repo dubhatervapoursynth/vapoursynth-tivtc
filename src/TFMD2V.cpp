@@ -41,16 +41,14 @@ void TFM::parseD2V()
     else if (error == 3) throw TIVTCError("TFM:  malloc failure (d2v)!");
     return;
   }
-//  if (debug)
-//  {
-//    sprintf(buf, "TFM:  successfully opened specified d2v file.");
-//    OutputDebugString(buf);
-//    if (D2Vformat > 9) sprintf(buf, "TFM:  newest style (dgindex 1.2+) d2v detected.\n");
-//    else if (D2Vformat > 3) sprintf(buf, "TFM:  new style (dgindex 1.0+) d2v detected.\n");
-//    else if (D2Vformat > 0) sprintf(buf, "TFM:  new style (dvd2avidg 1.2+) d2v detected.\n");
-//    else sprintf(buf, "TFM:  old style (dvd2avi 1.76 or 1.77) d2v detected.\n");
-//    OutputDebugString(buf);
-//  }
+  if (debug)
+  {
+    logInfo(vsapi, vscore, "TFM:  successfully opened specified d2v file.");
+    logInfo(vsapi, vscore, "TFM:  %s d2v detected.",
+      D2Vformat > 9 ? "newest style (dgindex 1.2+)" :
+      D2Vformat > 3 ? "new style (dgindex 1.0+)" :
+      D2Vformat > 0 ? "new style (dvd2avidg 1.2+)" : "old style (dvd2avi 1.76 or 1.77)");
+  }
   error = D2V_find_and_correct(valIn, found, tff);
   if (error != 0 || tff == -1)
   {
@@ -63,21 +61,15 @@ void TFM::parseD2V()
   {
     order = tff;
     if (field == -1) field = tff;
-//    if (debug)
-//    {
-//      sprintf(buf, "TFM:  auto detected field order from d2v is %s.\n", order == 1 ? "TFF" : "BFF");
-//      OutputDebugString(buf);
-//    }
+    if (debug)
+      logInfo(vsapi, vscore, "TFM:  auto detected field order from d2v is %s.",
+        order == 1 ? "TFF" : "BFF");
   }
   else if (order != tff)
     throw TIVTCError("TFM:  the field order of the d2v does not match the user specified field order!");
   if (!found)
   {
-//    if (debug)
-//    {
-//      sprintf(buf, "TFM:  no errors found in d2v.\n");
-//      OutputDebugString(buf);
-//    }
+    if (debug) logInfo(vsapi, vscore, "TFM:  no errors found in d2v.");
     if (flags != 3)
     {
       if (trimIn.size())
@@ -149,7 +141,6 @@ static inline bool isD2VFlagChar(int c)
 int TFM::fillTrimArray(int frames)
 {
   trimArray.resize(frames, 1);
-//  if (trimArray == nullptr) return 1;
   int x, y, v;
   char linein[81];
   if (sscanf(trimIn.c_str(), "%d,%d", &x, &y) == 2)
@@ -540,7 +531,6 @@ int TFM::D2V_fill_d2vfilmarray(const std::vector<int> &array, int frames)
   int i = 0, v, fields = 0, val, outpattern = 0;
   if (d2vfilmarray.size()) { d2vfilmarray.resize(0); }
   d2vfilmarray.resize(frames + 1, 0);
-//  if (d2vfilmarray == nullptr) return 1;
   while (array[i] != 9)
   {
     val = array[i];
@@ -578,17 +568,13 @@ int TFM::D2V_fill_d2vfilmarray(const std::vector<int> &array, int frames)
   }
   if (i == 0) return 0;
   d2vpercent = double(i - outpattern)*100.0 / double(i);
-//  if (debug)
-//  {
-//    sprintf(buf, "TFM:  d2vflags = %d  out_of_pattern = %d  (%3.1f%s FILM)\n", i, outpattern,
-//      d2vpercent, "%");
-//    OutputDebugString(buf);
-//  }
   if (flags == 0) d2vpercent = -20.0;
+  if (debug)
+    logInfo(vsapi, vscore, "TFM:  d2vflags = %d  out_of_pattern = %d  (%3.1f%% FILM)", i, outpattern,
+      d2vpercent);
   if (trimIn.size() && trimArray.size())
   {
     std::vector<uint8_t> d2vt(vi->numFrames, 0);
-//    if (d2vt == nullptr) return 2;
     for (v = 0, i = 0; i <= nfrms && v < frames; ++v)
     {
       if (trimArray[v])
@@ -599,11 +585,6 @@ int TFM::D2V_fill_d2vfilmarray(const std::vector<int> &array, int frames)
     }
     d2vfilmarray.resize(0);
     d2vfilmarray.resize(vi->numFrames);
-//    if (d2vfilmarray == nullptr)
-//    {
-//      free(d2vt);
-//      return 3;
-//    }
     memcpy(d2vfilmarray.data(), d2vt.data(), vi->numFrames * sizeof(unsigned char));
     trimArray.resize(0);
   }

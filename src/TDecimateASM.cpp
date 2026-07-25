@@ -66,16 +66,12 @@ static void blend_uint16_c(uint8_t* dstp, const uint8_t* srcp1,
       const int src2 = reinterpret_cast<const uint16_t*>(srcp2)[x];
       const int result = src2 + (((src1 - src2) * weight_i + 16384) >> 15);
       reinterpret_cast<uint16_t*>(dstp)[x] = std::max(std::min(result, max_pixel_value), 0);
-      //  (reinterpret_cast<const uint16_t*>(srcp1)[x] * weight_i + reinterpret_cast<const uint16_t*>(srcp2)[x] * invweight_i + 16384) >> 15;
     }
     srcp1 += src1_pitch;
     srcp2 += src2_pitch;
     dstp += dst_pitch;
   }
 }
-
-
-
 
 // handles 50% special case as well
 // hbd ready
@@ -105,11 +101,6 @@ void dispatch_blend(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, i
   // 10-16 bits
   blend_uint16_c(dstp, srcp1, srcp2, width, height, dst_pitch, src1_pitch, src2_pitch, weight_i, bits_per_pixel);
 }
-
-
-
-
-
 
 // only 411 uses
 template<int blkSizeY>
@@ -142,41 +133,6 @@ void calcSSD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
 
   sad = tmpsum;
 }
-
-
-
-
-// new
-
-
-
-
-
-
-
-
-// instantiate
-
-
-
-
-
-// mod 8 always, unaligned
-
-
-
-
-//-------- helpers
-
-// true SAD false SSD
-
-
-
-
-// true: SAD, false: SSD
-
-
-
 
 // The per-pixel metric: absolute difference for SAD, squared difference for SSD, scaled back to
 // the 8 bit range for high bit depth material so the thresholds stay comparable across depths.
@@ -317,5 +273,3 @@ template void calcDiff_SADorSSD_Generic_c<uint16_t, false, 1>(const uint16_t* pr
   ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 template void calcDiff_SADorSSD_Generic_c<uint16_t, true, 1>(const uint16_t* prvp, const uint16_t* curp,
   ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
-
-

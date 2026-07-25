@@ -24,10 +24,8 @@
 */
 
 #include "Cycle.h"
-//#include "avisynth.h"
 #include "stdint.h"
 #include <inttypes.h>
-//#include <windows.h> // OutputDebugString
 #include <algorithm>
 #include <cstring>
 #include "internal.h"

@@ -4,6 +4,9 @@
 #include <stdexcept>
 #include <cstring>
 #include <cstdio>
+#include <cstdarg>
+#include <inttypes.h>
+#include <VapourSynth4.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -70,6 +73,25 @@ static inline int decodeMatchChar(int c)
   case 'h': return ISDT;
   default:  return -1;
   }
+}
+
+#if defined(__clang__) || defined(__GNUC__)
+#define TIVTC_PRINTF_FMT(f, a) __attribute__((format(printf, f, a)))
+#else
+#define TIVTC_PRINTF_FMT(f, a)
+#endif
+
+// Emit a formatted informational message to the VapourSynth log. Call sites gate on their own
+// `debug` flag; there is no other logging path out of these filters.
+TIVTC_PRINTF_FMT(3, 4)
+static inline void logInfo(const VSAPI *vsapi, VSCore *core, const char *fmt, ...)
+{
+  char msg[1024];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(msg, sizeof(msg), fmt, args);
+  va_end(args);
+  vsapi->logMessage(mtInformation, msg, core);
 }
 
 // Blank lines and lines opening with ';' or '#' carry no data in any of the ovr/input file formats.

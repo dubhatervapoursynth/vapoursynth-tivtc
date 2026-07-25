@@ -46,12 +46,8 @@
 #include <VSHelper4.h>
 
 #include "internal.h"
-//#include "Font.h"
 #include "Cycle.h"
 #include "calcCRC.h"
-//#include "profUtil.h"
-//#include "Cache.h"
-
 enum {
     RetFrameIsReady = 69,
 };
@@ -111,6 +107,7 @@ private:
   int blockx, blocky;
   int vfrDec;
   bool debug, display;
+  VSCore *vscore; // stored only so debug logging can reach logMessage
   bool batch;
   bool tcfv1;
   bool se;
@@ -174,12 +171,6 @@ private:
   void findDupStrings(Cycle &p, Cycle &c, Cycle &n);
 
   int getTFMFrameProperties(const VSFrame *src, int& d2vfilm) const;
-//  template<typename pixel_t>
-//  int getHint_core(const VSFrame *src, int &d2vfilm);
-
-//  template<typename pixel_t>
-//  void restoreHint(const VSFrame *dst);
-
   void blendFrames(const VSFrame *src1, const VSFrame *src2, VSFrame *dst,
     double amount1);
   void calcBlendRatios(double &amount1, double &amount2, int &frame1, int &frame2, int n,
@@ -212,8 +203,6 @@ private:
   int findNumerator(double decRatio, int divisor) const;
   double findCorrectionFactors(double decRatio, int num, int den, int rc[10]) const;
   void sortMetrics(uint64_t *metrics, int *order, int length) const;
-  //void SedgeSort(uint64_t *metrics, int *order, int length);
-  //void pQuickerSort(uint64_t *metrics, int *order, int lower, int upper);
   // Not const: both write into the shared `diff` scratch buffer.
   void calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *core, VSFrameContext *frameCtx=nullptr);
   uint64_t calcMetric(const VSFrame *prevt, const VSFrame *currt, const VSVideoInfo *vi, int &blockNI,
@@ -244,9 +233,6 @@ public:
     VSNode *_clip2, int _sdlim, int _opt, const char* _orgOut, const VSAPI *_vsapi, VSCore *core);
   ~TDecimate();
 
-//  int __stdcall SetCacheHints(int cachehints, int frame_range) override {
-//    return cachehints == CACHE_GET_MTMODE ? MT_SERIALIZED : 0;
-//  }
 };
 
 #endif // TDECIMATE_H

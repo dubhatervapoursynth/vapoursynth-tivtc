@@ -74,13 +74,7 @@ private:
   void maskClip2(const VSFrame *src, const VSFrame *deint, const VSFrame *mask,
     VSFrame *dst) const;
 
-//  void putHint(VSFrame *dst, int field, unsigned int hint);
-//  template<typename pixel_t>
-//  void putHint_core(VSFrame *dst, int field, unsigned int hint);
   void getProperties(const VSFrame *src, int& field, bool& combed) const;
-//  template<typename pixel_t>
-//  bool getHint_core(const VSFrame *src, int& field, bool& combed, unsigned int& hint);
-
   void getSetOvr(int n);
   int getEffectivePP(int n) const; // effective PP for frame n (base + P overrides), no side effects
 
@@ -88,10 +82,6 @@ private:
 
   template<int planarType>
   void linkPlanar(VSFrame *mask) const;
-
-//  void destroyHint(VSFrame *dst, unsigned int hint);
-//  template<typename pixel_t>
-//  void destroyHint_core(VSFrame *dst, unsigned int hint);
 
   void BlendDeint(const VSFrame *src, const VSFrame *mask, VSFrame *dst,
     bool nomask) const;

@@ -219,20 +219,14 @@ bool TFM::checkCombedPlanar(const VSFrame *src, int n, int match,
   {
     if (mics[match] > MI)
     {
-//      if (debug && !ddebug)
-//      {
-//        sprintf(buf, "TFM:  frame %d  - match %c:  Detected As Combed  (ReCheck - not processed)! (%d > %d)\n",
-//          n, MTC(match), mics[match], MI);
-//        OutputDebugString(buf);
-//      }
+      if (debug && !ddebug)
+        logInfo(vsapi, vscore, "TFM:  frame %d  - match %c:  Detected As Combed  (ReCheck - not "
+          "processed)! (%d > %d)", n, MTC(match), mics[match], MI);
       return true;
     }
-//    if (debug && !ddebug)
-//    {
-//      sprintf(buf, "TFM:  frame %d  - match %c:  Detected As NOT Combed  (ReCheck - not processed)! (%d <= %d)\n",
-//        n, MTC(match), mics[match], MI);
-//      OutputDebugString(buf);
-//    }
+    if (debug && !ddebug)
+      logInfo(vsapi, vscore, "TFM:  frame %d  - match %c:  Detected As NOT Combed  (ReCheck - not "
+        "processed)! (%d <= %d)", n, MTC(match), mics[match], MI);
     return false;
   }
 
@@ -374,20 +368,14 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
   }
   if (mics[match] > MI)
   {
-//    if (debug && !ddebug)
-//    {
-//      sprintf(buf, "TFM:  frame %d  - match %c:  Detected As Combed! (%d > %d)\n",
-//        n, MTC(match), mics[match], MI);
-//      OutputDebugString(buf);
-//    }
+    if (debug && !ddebug)
+      logInfo(vsapi, vscore, "TFM:  frame %d  - match %c:  Detected As Combed! (%d > %d)",
+        n, MTC(match), mics[match], MI);
     return true;
   }
-//  if (debug && !ddebug)
-//  {
-//    sprintf(buf, "TFM:  frame %d  - match %c:  Detected As NOT Combed! (%d <= %d)\n",
-//      n, MTC(match), mics[match], MI);
-//    OutputDebugString(buf);
-//  }
+  if (debug && !ddebug)
+    logInfo(vsapi, vscore, "TFM:  frame %d  - match %c:  Detected As NOT Combed! (%d <= %d)",
+      n, MTC(match), mics[match], MI);
   return false;
 }
 

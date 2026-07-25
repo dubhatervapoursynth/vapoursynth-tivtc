@@ -644,71 +644,6 @@ void cubicDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
 }
 
 
-//void TFMPP::destroyHint(VSFrame *dst, unsigned int hint)
-//{
-//  if (vi->format.bytesPerSample == 1)
-//    destroyHint_core<uint8_t>(dst, hint);
-//  else
-//    destroyHint_core<uint16_t>(dst, hint);
-//}
-
-//template<typename pixel_t>
-//void TFMPP::destroyHint_core(VSFrame *dst, unsigned int hint)
-//{
-//  pixel_t* p = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 0));
-//  if (hint & 0x80)
-//  {
-//    hint >>= 8;
-//    for (int i = 0; i < 32; ++i)
-//    {
-//      *p &= ~1;
-//      *p++ |= ((MAGIC_NUMBER_2 & (1 << i)) >> i);
-//    }
-//    for (int i = 0; i < 32; ++i)
-//    {
-//      *p &= ~1;
-//      *p++ |= ((hint & (1 << i)) >> i);
-//    }
-//  }
-//  else
-//  {
-//    for (int i = 0; i < 64; ++i)
-//      *p++ &= ~1;
-//  }
-//}
-
-//void TFMPP::putHint(VSFrame *dst, int field, unsigned int hint)
-//{
-//  if (vi->format.bytesPerSample == 1)
-//    return putHint_core<uint8_t>(dst, field, hint);
-//  else
-//    return putHint_core<uint16_t>(dst, field, hint);
-//}
-
-//template<typename pixel_t>
-//void TFMPP::putHint_core(VSFrame *dst, int field, unsigned int hint)
-//{
-//  pixel_t *p = reinterpret_cast<pixel_t *>(vsapi->getWritePtr(dst, 0));
-//  unsigned int i;
-//  hint &= (D2VFILM | 0xFF80);
-//  if (field == 1)
-//  {
-//    hint |= TOP_FIELD;
-//    hint |= ISDT;
-//  }
-//  else hint |= ISDB;
-//  for (i = 0; i < 32; ++i)
-//  {
-//    *p &= ~1;
-//    *p++ |= ((MAGIC_NUMBER & (1 << i)) >> i);
-//  }
-//  for (i = 0; i < 32; ++i)
-//  {
-//    *p &= ~1;
-//    *p++ |= ((hint & (1 << i)) >> i);
-//  }
-//}
-
 void TFMPP::getProperties(const VSFrame *src, int& field, bool& combed) const
 {
     field = -1; combed = false;
@@ -721,31 +656,6 @@ void TFMPP::getProperties(const VSFrame *src, int& field, bool& combed) const
     if (vsapi->mapNumElements(props, PROP_Combed) == 1)
         combed = !!vsapi->mapGetInt(props, PROP_Combed, 0, nullptr);
 }
-
-//template<typename pixel_t>
-//bool TFMPP::getHint_core(const VSFrame *src, int &field, bool &combed, unsigned int &hint)
-//{
-//  field = -1; combed = false; hint = 0;
-//  const pixel_t *srcp = reinterpret_cast<const pixel_t *>(vsapi->getReadPtr(src, 0));
-//  unsigned int i, magic_number = 0;
-//  for (i = 0; i < 32; ++i)
-//  {
-//    magic_number |= ((*srcp++ & 1) << i);
-//  }
-//  if (magic_number != MAGIC_NUMBER) return false;
-//  for (i = 0; i < 32; ++i)
-//  {
-//    hint |= ((*srcp++ & 1) << i);
-//  }
-//  if (hint & 0xFFFF0000) return false;
-//  if (hint&TOP_FIELD) field = 1;
-//  else field = 0;
-//  if (hint&COMBED) combed = true;
-//  int value = hint & 0x07;
-//  if (value == 5) { combed = true; field = 0; }
-//  else if (value == 6) { combed = true; field = 1; }
-//  return true;
-//}
 
 void TFMPP::getSetOvr(int n)
 {
