@@ -171,6 +171,14 @@ private:
   void micMatchByMode(FrameMatchState &st);
   void applyMicMatching(FrameMatchState &st);
 
+  // One plane's worth of resolved read pointers for a compareFields pass. All three variants
+  // build this identically; defined in TFM.cpp since only that file uses it.
+  template<typename pixel_t> struct MatchPlane;
+
+  template<typename pixel_t>
+  void setupMatchPlane(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt,
+    int plane, int match1, int match2, bool clearMap, MatchPlane<pixel_t> &m);
+
   // Shared epilogue of the three compareFields variants.
   int decideMatch(int match1, int match2, uint64_t accumPc, uint64_t accumNc,
     uint64_t accumPm, uint64_t accumNm, int firstRung, int bits_per_pixel,
@@ -212,6 +220,10 @@ private:
     const VSFrame *src, const VSFrame *nxt);
 
   void putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, const int mics[5]) const;
+  void validateParameters();
+  void parseInputFile();
+  void parseOvrFile();
+  void setupOutputFiles();
   void parseD2V();
   int D2V_find_and_correct(std::vector<int> &array, bool &found, int &tff) const;
   void D2V_find_fix(int a1, int a2, int sync, int &f1, int &f2, int &change) const;

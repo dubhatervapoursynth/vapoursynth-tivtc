@@ -892,104 +892,34 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
             else dir = edgeS1 >= edgeS2 ? dir1 : dir2;
           }
           dirF = 0.5f / tan(dir);
-          if (dirF >= 0.0f)
+          // dirF is the interpolation direction in half-pixel steps. Rung k blends the two
+          // neighbouring offsets k and k+1; from 2.0 to 2.5 the pixel four columns out is taken
+          // directly, and past 2.5 the direction is too shallow to trust so a vertical cubic is
+          // used instead. The sign of dirF only mirrors the offsets, which is why this used to be
+          // two identical five-deep if/else ladders.
           {
-            if (dirF >= 0.5f)
+            const double aF = dirF >= 0.0 ? dirF : -dirF;
+            const int s = dirF >= 0.0 ? 1 : -1;
+            if (aF > 2.50f)
             {
-              if (dirF >= 1.0f)
-              {
-                if (dirF >= 1.5f)
-                {
-                  if (dirF >= 2.0f)
-                  {
-                    if (dirF <= 2.50f)
-                    {
-                      temp1 = srcppY[x + 4];
-                      temp2 = srcpY[x - 4];
-                      temp = (srcppY[x + 4] + srcpY[x - 4] + 1) >> 1;
-                    }
-                    else
-                    {
-                      temp1 = temp2 = srcpY[x];
-                      temp = cubicInt<bits_per_pixel>(srcpppY[x], srcppY[x], srcpY[x], srcpnY[x]);
-                    }
-                  }
-                  else
-                  {
-                    temp1 = (int)((dirF - 1.5f)*(srcppY[x + 4]) + (2.0f - dirF)*(srcppY[x + 3]) + 0.5f);
-                    temp2 = (int)((dirF - 1.5f)*(srcpY[x - 4]) + (2.0f - dirF)*(srcpY[x - 3]) + 0.5f);
-                    temp = (int)((dirF - 1.5f)*(srcppY[x + 4] + srcpY[x - 4]) + (2.0f - dirF)*(srcppY[x + 3] + srcpY[x - 3]) + 0.5f);
-                  }
-                }
-                else
-                {
-                  temp1 = (int)((dirF - 1.0f)*(srcppY[x + 3]) + (1.5f - dirF)*(srcppY[x + 2]) + 0.5f);
-                  temp2 = (int)((dirF - 1.0f)*(srcpY[x - 3]) + (1.5f - dirF)*(srcpY[x - 2]) + 0.5f);
-                  temp = (int)((dirF - 1.0f)*(srcppY[x + 3] + srcpY[x - 3]) + (1.5f - dirF)*(srcppY[x + 2] + srcpY[x - 2]) + 0.5f);
-                }
-              }
-              else
-              {
-                temp1 = (int)((dirF - 0.5f)*(srcppY[x + 2]) + (1.0f - dirF)*(srcppY[x + 1]) + 0.5f);
-                temp2 = (int)((dirF - 0.5f)*(srcpY[x - 2]) + (1.0f - dirF)*(srcpY[x - 1]) + 0.5f);
-                temp = (int)((dirF - 0.5f)*(srcppY[x + 2] + srcpY[x - 2]) + (1.0f - dirF)*(srcppY[x + 1] + srcpY[x - 1]) + 0.5f);
-              }
+              temp1 = temp2 = srcpY[x];
+              temp = cubicInt<bits_per_pixel>(srcpppY[x], srcppY[x], srcpY[x], srcpnY[x]);
+            }
+            else if (aF >= 2.0f)
+            {
+              temp1 = srcppY[x + s * 4];
+              temp2 = srcpY[x - s * 4];
+              temp = (srcppY[x + s * 4] + srcpY[x - s * 4] + 1) >> 1;
             }
             else
             {
-              temp1 = (int)(dirF*(srcppY[x + 1]) + (0.5f - dirF)*(srcppY[x]) + 0.5f);
-              temp2 = (int)(dirF*(srcpY[x - 1]) + (0.5f - dirF)*(srcpY[x]) + 0.5f);
-              temp = (int)(dirF*(srcppY[x + 1] + srcpY[x - 1]) + (0.5f - dirF)*(srcppY[x] + srcpY[x]) + 0.5f);
-            }
-          }
-          else
-          {
-            if (dirF <= -0.5f)
-            {
-              if (dirF <= -1.0f)
-              {
-                if (dirF <= -1.5f)
-                {
-                  if (dirF <= -2.0f)
-                  {
-                    if (dirF >= -2.50f)
-                    {
-                      temp1 = srcppY[x - 4];
-                      temp2 = srcpY[x + 4];
-                      temp = (srcppY[x - 4] + srcpY[x + 4] + 1) >> 1;
-                    }
-                    else
-                    {
-                      temp1 = temp2 = srcpY[x];
-                      temp = cubicInt<bits_per_pixel>(srcpppY[x], srcppY[x], srcpY[x], srcpnY[x]);
-                    }
-                  }
-                  else
-                  {
-                    temp1 = (int)((-dirF - 1.5f)*(srcppY[x - 4]) + (2.0f + dirF)*(srcppY[x - 3]) + 0.5f);
-                    temp2 = (int)((-dirF - 1.5f)*(srcpY[x + 4]) + (2.0f + dirF)*(srcpY[x + 3]) + 0.5f);
-                    temp = (int)((-dirF - 1.5f)*(srcppY[x - 4] + srcpY[x + 4]) + (2.0f + dirF)*(srcppY[x - 3] + srcpY[x + 3]) + 0.5f);
-                  }
-                }
-                else
-                {
-                  temp1 = (int)((-dirF - 1.0f)*(srcppY[x - 3]) + (1.5f + dirF)*(srcppY[x - 2]) + 0.5f);
-                  temp2 = (int)((-dirF - 1.0f)*(srcpY[x + 3]) + (1.5f + dirF)*(srcpY[x + 2]) + 0.5f);
-                  temp = (int)((-dirF - 1.0f)*(srcppY[x - 3] + srcpY[x + 3]) + (1.5f + dirF)*(srcppY[x - 2] + srcpY[x + 2]) + 0.5f);
-                }
-              }
-              else
-              {
-                temp1 = (int)((-dirF - 0.5f)*(srcppY[x - 2]) + (1.0f + dirF)*(srcppY[x - 1]) + 0.5f);
-                temp2 = (int)((-dirF - 0.5f)*(srcpY[x + 2]) + (1.0f + dirF)*(srcpY[x + 1]) + 0.5f);
-                temp = (int)((-dirF - 0.5f)*(srcppY[x - 2] + srcpY[x + 2]) + (1.0f + dirF)*(srcppY[x - 1] + srcpY[x + 1]) + 0.5f);
-              }
-            }
-            else
-            {
-              temp1 = (int)((-dirF)*(srcppY[x - 1]) + (0.5f + dirF)*(srcppY[x]) + 0.5f);
-              temp2 = (int)((-dirF)*(srcpY[x + 1]) + (0.5f + dirF)*(srcpY[x]) + 0.5f);
-              temp = (int)((-dirF)*(srcppY[x - 1] + srcpY[x + 1]) + (0.5f + dirF)*(srcppY[x] + srcpY[x]) + 0.5f);
+              const int k = (int)(aF * 2.0);          // 0..3; the multiply by two is exact
+              const double w = aF - k * 0.5;
+              const double w2 = (k + 1) * 0.5 - aF;
+              const int hi = s * (k + 1), lo = s * k;
+              temp1 = (int)(w*(srcppY[x + hi]) + w2*(srcppY[x + lo]) + 0.5f);
+              temp2 = (int)(w*(srcpY[x - hi]) + w2*(srcpY[x - lo]) + 0.5f);
+              temp = (int)(w*(srcppY[x + hi] + srcpY[x - hi]) + w2*(srcppY[x + lo] + srcpY[x - lo]) + 0.5f);
             }
           }
 
@@ -1123,60 +1053,16 @@ void maskClip2_C(const uint8_t* srcp, const uint8_t* dntp,
 // 8 bit only
 
 
-TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _display,
-  VSNode *_clip2, [[maybe_unused]] bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core)
-    : vsapi(_vsapi), child(_child),
-  PP(_PP), mthresh(_mthresh), ovr(_ovr), display(_display), clip2(_clip2),
-  opt(_opt)
+// Parse the ovr= override file: one pass to count the M/P entries so setArray can be sized,
+// then one to fill it. Returns early when the file holds no usable entries (this was a
+// `goto emptyovrFM` out of the middle of the constructor).
+void TFMPP::parseOvrFile()
 {
-    vi = vsapi->getVideoInfo(child);
+  if (!ovr.size()) return;
 
-  mmask = nullptr;
-
-  int w, i, z, b, q, countOvrS;
+  int w, i = 0, z, b, q, countOvrS;
   char linein[1024], *linep, *linet;
   std::unique_ptr<FILE, decltype (&fclose)> f(nullptr, nullptr);
-
-
-  if (vi->format.bitsPerSample > 16)
-    throw TIVTCError("TFMPP:  only 8-16 bit formats supported!");
-  if (vi->format.sampleType != stInteger)
-      throw TIVTCError("TFMPP: only integer formats supported!");
-  if (vi->format.colorFamily != cfYUV)
-    throw TIVTCError("TFMPP:  YUV data only!");
-  if (vi->height & 1 || vi->width & 1)
-    throw TIVTCError("TFMPP:  height and width must be divisible by 2!");
-  if (PP < 2 || PP > 7)
-    throw TIVTCError("TFMPP:  PP must be set to 2, 3, 4, 5, 6, or 7!");
-  if (opt < 0 || opt > 4)
-    throw TIVTCError("TFMPP:  opt must be set to 0, 1, 2, 3, or 4!");
-  if (clip2)
-  {
-    uC2 = true;
-    const VSVideoInfo *vi2 = vsapi->getVideoInfo(clip2);
-//    if (vi2.BitsPerComponent() != vi.BitsPerComponent())
-//      throw TIVTCError("TFMPP:  clip2 bit depth do not match input clip!!");
-//    if (!vi2.IsYUV())
-//      throw TIVTCError("TFMPP:  clip2 must be in YUV colorspace!");
-    if (!vsh::isSameVideoFormat(&vi->format, &vi2->format))
-      throw TIVTCError("TFMPP:  clip2 colorspace must be the same as input clip!");
-    if (vi2->height != vi->height || vi2->width != vi->width)
-      throw TIVTCError("TFMPP:  clip2 frame dimensions do not match input clip!");
-    if (vi2->numFrames != vi->numFrames)
-      throw TIVTCError("TFMPP:  clip2 does not have the same number of frames as input clip!");
-  }
-  else 
-    uC2 = false;
-
-//  child->SetCacheHints(CACHE_GENERIC, 3); // fixed to diameter (07/30/2005)
-
-
-  nfrms = vi->numFrames - 1;
-  PP_origSaved = PP;
-  mthresh_origSaved = mthresh;
-  i = 0;
-  if (ovr.size())
-  {
     if ((f = decltype(f) (tivtc_fopen(ovr.c_str(), "r"), &fclose)) != nullptr)
     {
       countOvrS = 0;
@@ -1189,7 +1075,7 @@ TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _disp
         if (*linep != 0) ++countOvrS;
       }
 
-      if (countOvrS == 0) { goto emptyovrFM; }
+      if (countOvrS == 0) return;
       ++countOvrS;
       countOvrS *= 4;
       setArray.resize(countOvrS, 0xffffffff);
@@ -1292,8 +1178,57 @@ TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _disp
     else {
         throw TIVTCError("TFMPP:  ovr input error (could not open ovr file)!");
     }
+}
+
+TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _display,
+  VSNode *_clip2, [[maybe_unused]] bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core)
+    : vsapi(_vsapi), child(_child),
+  PP(_PP), mthresh(_mthresh), ovr(_ovr), display(_display), clip2(_clip2),
+  opt(_opt)
+{
+    vi = vsapi->getVideoInfo(child);
+
+  mmask = nullptr;
+
+
+
+  if (vi->format.bitsPerSample > 16)
+    throw TIVTCError("TFMPP:  only 8-16 bit formats supported!");
+  if (vi->format.sampleType != stInteger)
+      throw TIVTCError("TFMPP: only integer formats supported!");
+  if (vi->format.colorFamily != cfYUV)
+    throw TIVTCError("TFMPP:  YUV data only!");
+  if (vi->height & 1 || vi->width & 1)
+    throw TIVTCError("TFMPP:  height and width must be divisible by 2!");
+  if (PP < 2 || PP > 7)
+    throw TIVTCError("TFMPP:  PP must be set to 2, 3, 4, 5, 6, or 7!");
+  if (opt < 0 || opt > 4)
+    throw TIVTCError("TFMPP:  opt must be set to 0, 1, 2, 3, or 4!");
+  if (clip2)
+  {
+    uC2 = true;
+    const VSVideoInfo *vi2 = vsapi->getVideoInfo(clip2);
+//    if (vi2.BitsPerComponent() != vi.BitsPerComponent())
+//      throw TIVTCError("TFMPP:  clip2 bit depth do not match input clip!!");
+//    if (!vi2.IsYUV())
+//      throw TIVTCError("TFMPP:  clip2 must be in YUV colorspace!");
+    if (!vsh::isSameVideoFormat(&vi->format, &vi2->format))
+      throw TIVTCError("TFMPP:  clip2 colorspace must be the same as input clip!");
+    if (vi2->height != vi->height || vi2->width != vi->width)
+      throw TIVTCError("TFMPP:  clip2 frame dimensions do not match input clip!");
+    if (vi2->numFrames != vi->numFrames)
+      throw TIVTCError("TFMPP:  clip2 does not have the same number of frames as input clip!");
   }
-emptyovrFM:
+  else 
+    uC2 = false;
+
+//  child->SetCacheHints(CACHE_GENERIC, 3); // fixed to diameter (07/30/2005)
+
+
+  nfrms = vi->numFrames - 1;
+  PP_origSaved = PP;
+  mthresh_origSaved = mthresh;
+  parseOvrFile();
   mmask = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, nullptr, core);
 }
 

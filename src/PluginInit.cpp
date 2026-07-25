@@ -116,144 +116,109 @@ static void VS_CC tivtcDisplayFunc(const VSMap *in, VSMap *out, void *userData, 
 }
 
 
+// Every filter parameter here is optional with a fixed default, and the API reports "absent" via
+// the err out-parameter rather than the return value. These three collapse that three-line dance
+// into one expression.
+static int optInt(const VSMap *in, const char *name, int def, const VSAPI *vsapi)
+{
+  int err;
+  const int v = vsh::int64ToIntS(vsapi->mapGetInt(in, name, 0, &err));
+  return err ? def : v;
+}
+
+static bool optBool(const VSMap *in, const char *name, bool def, const VSAPI *vsapi)
+{
+  int err;
+  const bool v = !!vsapi->mapGetInt(in, name, 0, &err);
+  return err ? def : v;
+}
+
+static double optFloat(const VSMap *in, const char *name, double def, const VSAPI *vsapi)
+{
+  int err;
+  const double v = vsapi->mapGetFloat(in, name, 0, &err);
+  return err ? def : v;
+}
+
+static const char *optData(const VSMap *in, const char *name, const char *def, const VSAPI *vsapi)
+{
+  int err;
+  const char *v = vsapi->mapGetData(in, name, 0, &err);
+  return err ? def : v;
+}
+
 static void VS_CC tfmCreate(const VSMap *in, VSMap *out, [[maybe_unused]] void *userData, VSCore *core, const VSAPI *vsapi) {
     int err;
 
-    int order = vsh::int64ToIntS(vsapi->mapGetInt(in, "order", 0, &err));
-    if (err)
-        order = -1;
+    const int order = optInt(in, "order", -1, vsapi);
 
-    int field = vsh::int64ToIntS(vsapi->mapGetInt(in, "field", 0, &err));
-    if (err)
-        field = -1;
+    const int field = optInt(in, "field", -1, vsapi);
 
-    int mode = vsh::int64ToIntS(vsapi->mapGetInt(in, "mode", 0, &err));
-    if (err)
-        mode = 1;
+    const int mode = optInt(in, "mode", 1, vsapi);
 
-    int PP = vsh::int64ToIntS(vsapi->mapGetInt(in, "PP", 0, &err));
-    if (err)
-        PP = 6;
+    const int PP = optInt(in, "PP", 6, vsapi);
 
-    const char *ovr = vsapi->mapGetData(in, "ovr", 0, &err);
-    if (err)
-        ovr = "";
+    const char *ovr = optData(in, "ovr", "", vsapi);
 
-    const char *input = vsapi->mapGetData(in, "input", 0, &err);
-    if (err)
-        input = "";
+    const char *input = optData(in, "input", "", vsapi);
 
-    const char *output = vsapi->mapGetData(in, "output", 0, &err);
-    if (err)
-        output = "";
+    const char *output = optData(in, "output", "", vsapi);
 
-    const char *outputC = vsapi->mapGetData(in, "outputC", 0, &err);
-    if (err)
-        outputC = "";
+    const char *outputC = optData(in, "outputC", "", vsapi);
 
     bool debug = !!vsapi->mapGetInt(in, "debug", 0, &err); /// not used for anything at the moment. maybe use logMessage ?
     if (err)
         debug = false;
 
-    bool display = !!vsapi->mapGetInt(in, "display", 0, &err);
-    if (err)
-        display = false;
+    const bool display = optBool(in, "display", false, vsapi);
 
-    int slow = vsh::int64ToIntS(vsapi->mapGetInt(in, "slow", 0, &err));
-    if (err)
-        slow = 1;
+    const int slow = optInt(in, "slow", 1, vsapi);
 
-    bool mChroma = !!vsapi->mapGetInt(in, "mChroma", 0, &err);
-    if (err)
-        mChroma = true;
+    const bool mChroma = optBool(in, "mChroma", true, vsapi);
 
-    int cNum = vsh::int64ToIntS(vsapi->mapGetInt(in, "cNum", 0, &err));
-    if (err)
-        cNum = 15;
+    const int cNum = optInt(in, "cNum", 15, vsapi);
 
-    int cthresh = vsh::int64ToIntS(vsapi->mapGetInt(in, "cthresh", 0, &err));
-    if (err)
-        cthresh = 9;
+    const int cthresh = optInt(in, "cthresh", 9, vsapi);
 
-    int MI = vsh::int64ToIntS(vsapi->mapGetInt(in, "MI", 0, &err));
-    if (err)
-        MI = 80;
+    const int MI = optInt(in, "MI", 80, vsapi);
 
-    bool chroma = !!vsapi->mapGetInt(in, "chroma", 0, &err);
-    if (err)
-        chroma = false;
+    bool chroma = optBool(in, "chroma", false, vsapi);  // forced off for Y-only clips below
 
-    int blockx = vsh::int64ToIntS(vsapi->mapGetInt(in, "blockx", 0, &err));
-    if (err)
-        blockx = 16;
+    const int blockx = optInt(in, "blockx", 16, vsapi);
 
-    int blocky = vsh::int64ToIntS(vsapi->mapGetInt(in, "blocky", 0, &err));
-    if (err)
-        blocky = 16;
+    const int blocky = optInt(in, "blocky", 16, vsapi);
 
-    int y0 = vsh::int64ToIntS(vsapi->mapGetInt(in, "y0", 0, &err));
-    if (err)
-        y0 = 0;
+    const int y0 = optInt(in, "y0", 0, vsapi);
 
-    int y1 = vsh::int64ToIntS(vsapi->mapGetInt(in, "y1", 0, &err));
-    if (err)
-        y1 = 0;
+    const int y1 = optInt(in, "y1", 0, vsapi);
 
-    int mthresh = vsh::int64ToIntS(vsapi->mapGetInt(in, "mthresh", 0, &err));
-    if (err)
-        mthresh = 5;
+    const int mthresh = optInt(in, "mthresh", 5, vsapi);
 
-    const char *d2v = vsapi->mapGetData(in, "d2v", 0, &err);
-    if (err)
-        d2v = "";
+    const char *d2v = optData(in, "d2v", "", vsapi);
 
-    int ovrDefault = vsh::int64ToIntS(vsapi->mapGetInt(in, "ovrDefault", 0, &err));
-    if (err)
-        ovrDefault = 0;
+    const int ovrDefault = optInt(in, "ovrDefault", 0, vsapi);
 
-    int flags = vsh::int64ToIntS(vsapi->mapGetInt(in, "flags", 0, &err));
-    if (err)
-        flags = 4;
+    const int flags = optInt(in, "flags", 4, vsapi);
 
-    double scthresh = vsapi->mapGetFloat(in, "scthresh", 0, &err);
-    if (err)
-        scthresh = 12.0;
+    const double scthresh = optFloat(in, "scthresh", 12.0, vsapi);
 
-    int micout = vsh::int64ToIntS(vsapi->mapGetInt(in, "micout", 0, &err));
-    if (err)
-        micout = 0;
+    const int micout = optInt(in, "micout", 0, vsapi);
 
-    int micmatching = vsh::int64ToIntS(vsapi->mapGetInt(in, "micmatching", 0, &err));
-    if (err)
-        micmatching = 1;
+    const int micmatching = optInt(in, "micmatching", 1, vsapi);
 
-    const char *trimIn = vsapi->mapGetData(in, "trimIn", 0, &err);
-    if (err)
-        trimIn = "";
+    const char *trimIn = optData(in, "trimIn", "", vsapi);
 
-    bool hint = !!vsapi->mapGetInt(in, "hint", 0, &err);
-    if (err)
-        hint = true;
+    const bool hint = optBool(in, "hint", true, vsapi);
 
-    int metric = vsh::int64ToIntS(vsapi->mapGetInt(in, "metric", 0, &err));
-    if (err)
-        metric = 0;
+    const int metric = optInt(in, "metric", 0, vsapi);
 
-    bool batch = !!vsapi->mapGetInt(in, "batch", 0, &err);
-    if (err)
-        batch = false;
+    const bool batch = optBool(in, "batch", false, vsapi);
 
-    bool ubsco = !!vsapi->mapGetInt(in, "ubsco", 0, &err);
-    if (err)
-        ubsco = true;
+    const bool ubsco = optBool(in, "ubsco", true, vsapi);
 
-    bool mmsco = !!vsapi->mapGetInt(in, "mmsco", 0, &err);
-    if (err)
-        mmsco = true;
+    const bool mmsco = optBool(in, "mmsco", true, vsapi);
 
-    int opt = vsh::int64ToIntS(vsapi->mapGetInt(in, "opt", 0, &err));
-    if (err)
-        opt = 4;
+    const int opt = optInt(in, "opt", 4, vsapi);
 
 
     VSNode *clip = vsapi->mapGetNode(in, "clip", 0, nullptr);
@@ -377,25 +342,15 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, [[maybe_unused]] 
 
     VSNode *clip = vsapi->mapGetNode(in, "clip", 0, nullptr); /// move lower if possible
 
-    int mode = vsh::int64ToIntS(vsapi->mapGetInt(in, "mode", 0, &err));
-    if (err)
-        mode = 0;
+    const int mode = optInt(in, "mode", 0, vsapi);
 
-    int cycleR = vsh::int64ToIntS(vsapi->mapGetInt(in, "cycleR", 0, &err));
-    if (err)
-        cycleR = 1;
+    const int cycleR = optInt(in, "cycleR", 1, vsapi);
 
-    int cycle = vsh::int64ToIntS(vsapi->mapGetInt(in, "cycle", 0, &err));
-    if (err)
-        cycle = 5;
+    const int cycle = optInt(in, "cycle", 5, vsapi);
 
-    double rate = vsapi->mapGetFloat(in, "rate", 0, &err);
-    if (err)
-        rate = 23.976;
+    const double rate = optFloat(in, "rate", 23.976, vsapi);
 
-    bool chroma = !!vsapi->mapGetInt(in, "chroma", 0, &err);
-    if (err)
-        chroma = true;
+    bool chroma = optBool(in, "chroma", true, vsapi);  // forced off for Y-only clips below
 
     {
         const VSVideoInfo *vi = vsapi->getVideoInfo(clip);
@@ -403,135 +358,73 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, [[maybe_unused]] 
             chroma = false;
     }
 
-    double dupThresh = vsapi->mapGetFloat(in, "dupThresh", 0, &err);
-    if (err)
-        dupThresh = mode == 7 ? (chroma ? 0.4 : 0.5)
-                              : (chroma ? 1.1 : 1.4);
+    const double dupThresh = optFloat(in, "dupThresh", mode == 7 ? (chroma ? 0.4 : 0.5)
+                              : (chroma ? 1.1 : 1.4), vsapi);
 
-    double vidThresh = vsapi->mapGetFloat(in, "vidThresh", 0, &err);
-    if (err)
-        vidThresh = mode == 7 ? (chroma ? 3.5 : 4.0)
-                              : (chroma ? 1.1 : 1.4);
+    const double vidThresh = optFloat(in, "vidThresh", mode == 7 ? (chroma ? 3.5 : 4.0)
+                              : (chroma ? 1.1 : 1.4), vsapi);
 
-    double sceneThresh = vsapi->mapGetFloat(in, "sceneThresh", 0, &err);
-    if (err)
-        sceneThresh = 15;
+    const double sceneThresh = optFloat(in, "sceneThresh", 15, vsapi);
 
-    int hybrid = vsh::int64ToIntS(vsapi->mapGetInt(in, "hybrid", 0, &err));
-    if (err)
-        hybrid = 0;
+    const int hybrid = optInt(in, "hybrid", 0, vsapi);
 
-    int vidDetect = vsh::int64ToIntS(vsapi->mapGetInt(in, "vidDetect", 0, &err));
-    if (err)
-        vidDetect = 3;
+    const int vidDetect = optInt(in, "vidDetect", 3, vsapi);
 
-    int conCycle = vsh::int64ToIntS(vsapi->mapGetInt(in, "conCycle", 0, &err));
-    if (err)
-        conCycle = vidDetect >= 3 ? 1 : 2;
+    const int conCycle = optInt(in, "conCycle", vidDetect >= 3 ? 1 : 2, vsapi);
 
-    int conCycleTP = vsh::int64ToIntS(vsapi->mapGetInt(in, "conCycleTP", 0, &err));
-    if (err)
-        conCycleTP = vidDetect >= 3 ? 1 : 2;
+    const int conCycleTP = optInt(in, "conCycleTP", vidDetect >= 3 ? 1 : 2, vsapi);
 
-    const char *ovr = vsapi->mapGetData(in, "ovr", 0, &err);
-    if (err)
-        ovr = "";
+    const char *ovr = optData(in, "ovr", "", vsapi);
 
-    const char *output = vsapi->mapGetData(in, "output", 0, &err);
-    if (err)
-        output = "";
+    const char *output = optData(in, "output", "", vsapi);
 
-    const char *input = vsapi->mapGetData(in, "input", 0, &err);
-    if (err)
-        input = "";
+    const char *input = optData(in, "input", "", vsapi);
 
-    const char *tfmIn = vsapi->mapGetData(in, "tfmIn", 0, &err);
-    if (err)
-        tfmIn = "";
+    const char *tfmIn = optData(in, "tfmIn", "", vsapi);
 
-    const char *mkvOut = vsapi->mapGetData(in, "mkvOut", 0, &err);
-    if (err)
-        mkvOut = "";
+    const char *mkvOut = optData(in, "mkvOut", "", vsapi);
 
-    int nt = vsh::int64ToIntS(vsapi->mapGetInt(in, "nt", 0, &err));
-    if (err)
-        nt = 0;
+    const int nt = optInt(in, "nt", 0, vsapi);
 
-    int blockx = vsh::int64ToIntS(vsapi->mapGetInt(in, "blockx", 0, &err));
-    if (err)
-        blockx = 32;
+    const int blockx = optInt(in, "blockx", 32, vsapi);
 
-    int blocky = vsh::int64ToIntS(vsapi->mapGetInt(in, "blocky", 0, &err));
-    if (err)
-        blocky = 32;
+    const int blocky = optInt(in, "blocky", 32, vsapi);
 
-    bool debug = !!vsapi->mapGetInt(in, "debug", 0, &err);
-    if (err)
-        debug = false;
+    const bool debug = optBool(in, "debug", false, vsapi);
 
-    bool display = !!vsapi->mapGetInt(in, "display", 0, &err);
-    if (err)
-        display = false;
+    const bool display = optBool(in, "display", false, vsapi);
 
-    int vfrDec = vsh::int64ToIntS(vsapi->mapGetInt(in, "vfrDec", 0, &err));
-    if (err)
-        vfrDec = 1;
+    const int vfrDec = optInt(in, "vfrDec", 1, vsapi);
 
-    bool batch = !!vsapi->mapGetInt(in, "batch", 0, &err);
-    if (err)
-        batch = false;
+    const bool batch = optBool(in, "batch", false, vsapi);
 
-    bool tcfv1 = !!vsapi->mapGetInt(in, "tcfv1", 0, &err);
-    if (err)
-        tcfv1 = true;
+    const bool tcfv1 = optBool(in, "tcfv1", true, vsapi);
 
-    bool se = !!vsapi->mapGetInt(in, "se", 0, &err);
-    if (err)
-        se = false;
+    const bool se = optBool(in, "se", false, vsapi);
 
-    bool exPP = !!vsapi->mapGetInt(in, "exPP", 0, &err);
-    if (err)
-        exPP = false;
+    const bool exPP = optBool(in, "exPP", false, vsapi);
 
-    int maxndl = vsh::int64ToIntS(vsapi->mapGetInt(in, "maxndl", 0, &err));
-    if (err)
-        maxndl = -200;
+    const int maxndl = optInt(in, "maxndl", -200, vsapi);
 
-    bool m2PA = !!vsapi->mapGetInt(in, "m2PA", 0, &err);
-    if (err)
-        m2PA = false;
+    const bool m2PA = optBool(in, "m2PA", false, vsapi);
 
-    bool denoise = !!vsapi->mapGetInt(in, "denoise", 0, &err);
-    if (err)
-        denoise = false;
+    const bool denoise = optBool(in, "denoise", false, vsapi);
 
-    bool noblend = !!vsapi->mapGetInt(in, "noblend", 0, &err);
-    if (err)
-        noblend = true;
+    const bool noblend = optBool(in, "noblend", true, vsapi);
 
-    bool ssd = !!vsapi->mapGetInt(in, "ssd", 0, &err);
-    if (err)
-        ssd = false;
+    const bool ssd = optBool(in, "ssd", false, vsapi);
 
-    bool hint = !!vsapi->mapGetInt(in, "hint", 0, &err);
-    if (err)
-        hint = true;
+    const bool hint = optBool(in, "hint", true, vsapi);
 
     VSNode *clip2 = vsapi->mapGetNode(in, "clip2", 0, &err);
     if (err)
         clip2 = vsapi->addNodeRef(clip); // simplifies the code in the getframe functions
 
-    int sdlim = vsh::int64ToIntS(vsapi->mapGetInt(in, "sdlim", 0, &err));
-    if (err)
-        sdlim = 0;
+    const int sdlim = optInt(in, "sdlim", 0, vsapi);
 
-    int opt = vsh::int64ToIntS(vsapi->mapGetInt(in, "opt", 0, &err));
-    if (err)
-        opt = 4;
+    const int opt = optInt(in, "opt", 4, vsapi);
 
-    const char *orgOut = vsapi->mapGetData(in, "orgOut", 0, &err);
-    if (err)
-        orgOut = "";
+    const char *orgOut = optData(in, "orgOut", "", vsapi);
 
 
     TDecimate *tdecimate_data;

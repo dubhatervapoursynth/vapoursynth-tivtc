@@ -107,6 +107,7 @@ private:
 public:
   const VSVideoInfo *vi;
 
+  void parseOvrFile();
   const VSFrame *GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
   TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _display, VSNode *_clip2,
     bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core);

@@ -235,40 +235,46 @@ int TFM::D2V_find_and_correct(std::vector<int> &array, bool &found, int &tff) co
   return D2V_check_final(array);
 }
 
+// The two rule tables that map an illegal (a1, a2) rff/tff transition onto the field that has to
+// change. Each returns true when it recognised the pair. Their union is exactly the set
+// D2V_check_illegal accepts, so for any pair the caller should be fixing, one of them matches.
+static bool d2vFixTowardsGreater(int a1, int a2, int &f1, int &f2)
+{
+  if (a1 == 0 && a2 == 3) f2 = 0;
+  else if (a1 == 1 && a2 == 0) f1 = 0;
+  else if (a1 == 1 && a2 == 1) f1 = 0;
+  else if (a1 == 2 && a2 == 1) f2 = 2;
+  else if (a1 == 3 && a2 == 2) f1 = 2;
+  else if (a1 == 3 && a2 == 3) f1 = 2;
+  return f1 != f2;
+}
+
+static bool d2vFixTowardsLess(int a1, int a2, int &f1, int &f2)
+{
+  if (a1 == 0 && a2 == 2) f1 = 1;
+  else if (a1 == 0 && a2 == 3) f1 = 1;
+  else if (a1 == 1 && a2 == 0) f2 = 3;
+  else if (a1 == 2 && a2 == 0) f1 = 3;
+  else if (a1 == 2 && a2 == 1) f1 = 3;
+  else if (a1 == 3 && a2 == 2) f2 = 1;
+  return f1 != f2;
+}
+
+// sync picks which table is consulted first; the other is the fallback. This used to be a pair of
+// labels that jumped into each other, which looped forever if neither table matched -- it now
+// simply leaves f1 == f2 == -1 and change untouched, which the caller already treats as "no fix".
 void TFM::D2V_find_fix(int a1, int a2, int sync, int &f1, int &f2, int &change) const
 {
   f1 = f2 = -1;
   if (sync >= 0)
   {
-  greater_than:
-    if (a1 == 0 && a2 == 3) f2 = 0;
-    else if (a1 == 1 && a2 == 0) f1 = 0;
-    else if (a1 == 1 && a2 == 1) f1 = 0;
-    else if (a1 == 2 && a2 == 1) f2 = 2;
-    else if (a1 == 3 && a2 == 2) f1 = 2;
-    else if (a1 == 3 && a2 == 3) f1 = 2;
-    if (f1 != f2)
-    {
-      change = -1;
-      return;
-    }
-    goto less_than;
+    if (d2vFixTowardsGreater(a1, a2, f1, f2)) { change = -1; return; }
+    if (d2vFixTowardsLess(a1, a2, f1, f2)) { change = 1; return; }
   }
   else
   {
-  less_than:
-    if (a1 == 0 && a2 == 2) f1 = 1;
-    else if (a1 == 0 && a2 == 3) f1 = 1;
-    else if (a1 == 1 && a2 == 0) f2 = 3;
-    else if (a1 == 2 && a2 == 0) f1 = 3;
-    else if (a1 == 2 && a2 == 1) f1 = 3;
-    else if (a1 == 3 && a2 == 2) f2 = 1;
-    if (f1 != f2)
-    {
-      change = 1;
-      return;
-    }
-    goto greater_than;
+    if (d2vFixTowardsLess(a1, a2, f1, f2)) { change = 1; return; }
+    if (d2vFixTowardsGreater(a1, a2, f1, f2)) { change = -1; return; }
   }
 }
 
@@ -315,10 +321,12 @@ int TFM::D2V_initialize_array(std::vector<int> &array, int &d2vtype, int &frames
 {
     std::unique_ptr<FILE, decltype (&fclose)> ind2v(nullptr, nullptr);
   if (array.size() != 0) { array.resize(0); }
-  int num = 0, num2 = 0, pass = 1, D2Vformat;
+  int num = 0, num2 = 0, pass = 1, D2Vformat = 0;
   unsigned int val; // %x writes through an unsigned int*
   char line[1025], *p;
-pass2_start:
+  // pass 1 counts the flag bytes, pass 2 fills the array; the file is read twice
+  for (; pass <= 2; ++pass)
+  {
   ind2v = decltype (ind2v)(tivtc_fopen(d2v.c_str(), "r"), &fclose);
   if (ind2v == nullptr) return 1;
   if (pass == 2)
@@ -376,7 +384,7 @@ pass2_start:
       p++;
     }
   } while ((fgets(line, 1024, ind2v.get()) != nullptr) && isD2VFlagChar(line[0]));
-  if (pass == 1) { pass++; goto pass2_start; }
+  }
   d2vtype = D2Vformat;
   frames = 0;
   int i = 0;

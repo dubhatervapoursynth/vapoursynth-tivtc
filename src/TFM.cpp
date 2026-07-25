@@ -861,6 +861,88 @@ bool TFM::checkCombed(const VSFrame *src, int n, int match,
     return checkCombedPlanar(src, n, match, blockN, xblocksi, mics, ddebug, vi->format.numPlanes > 1 && chroma);
 }
 
+// One plane's worth of resolved pointers for a compareFields pass: the two match fields, the
+// current field, their immediate neighbours (and, for the slow 2 variant, the ones two rows out),
+// the diff map rows, and the band-exclusion limits.
+template<typename pixel_t>
+struct TFM::MatchPlane
+{
+  const pixel_t *prvppf, *prvpf, *prvnf, *prvnnf;
+  const pixel_t *curpf, *curf, *curnf;
+  const pixel_t *nxtppf, *nxtpf, *nxtnf, *nxtnnf;
+  ptrdiff_t prvf_pitch, curf_pitch, nxtf_pitch;
+  uint8_t *mapp, *mapn;
+  ptrdiff_t map_pitch;
+  int Width, Height, startx, stopx;
+  int y0a, y1a;
+  bool noBandExclusion;
+  ptrdiff_t tpitch_current;
+};
+
+// Resolve one plane for a compareFields pass. clearMap is set by the two slow variants, which
+// build their diff map incrementally and need it zeroed first.
+template<typename pixel_t>
+void TFM::setupMatchPlane(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt,
+  int plane, int match1, int match2, bool clearMap, MatchPlane<pixel_t> &m)
+{
+  m.mapp = vsapi->getWritePtr(map.get(), plane);
+  m.map_pitch = vsapi->getStride(map.get(), plane);
+
+  const pixel_t *prvp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(prv, plane));
+  const ptrdiff_t prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
+  const pixel_t *srcp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
+  const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
+  const pixel_t *nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
+  const ptrdiff_t nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
+
+  m.Width = vsapi->getFrameWidth(src, plane);
+  m.Height = vsapi->getFrameHeight(src, plane);
+
+  if (clearMap)
+    memset(m.mapp, 0, m.Height * m.map_pitch);
+
+  m.startx = 8 >> (plane ? vi->format.subSamplingW : 0);
+  m.stopx = m.Width - m.startx;
+  m.curf_pitch = src_pitch << 1;
+
+  // exclusion area limits from parameters
+  if (plane == 0)
+  {
+    m.y0a = y0;
+    m.y1a = y1;
+    m.tpitch_current = tpitchy;
+  }
+  else
+  {
+    const int ysubsampling = vi->format.subSamplingH;
+    m.y0a = y0 >> ysubsampling;
+    m.y1a = y1 >> ysubsampling;
+    m.tpitch_current = tpitchuv;
+  }
+  m.noBandExclusion = (m.y0a == m.y1a);
+  if (m.y0a >= 2) m.y0a = m.y0a - 2; // v18: real limit, since y goes only till Height-2
+  if (m.y1a <= m.Height - 2) m.y1a = m.y1a + 2; // v18: real limit, since y goes only from 2
+
+  m.curf = srcp + curfRow(match1, field) * src_pitch;
+  m.mapp = m.mapp + mapRow(match1, field) * m.map_pitch;
+  selectMatchField(match1, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
+    m.prvpf, m.prvf_pitch);
+  selectMatchField(match2, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
+    m.nxtpf, m.nxtf_pitch);
+
+  m.prvppf = m.prvpf - m.prvf_pitch;
+  m.prvnf = m.prvpf + m.prvf_pitch;
+  m.prvnnf = m.prvnf + m.prvf_pitch;
+  m.curpf = m.curf - m.curf_pitch;
+  m.curnf = m.curf + m.curf_pitch;
+  m.nxtppf = m.nxtpf - m.nxtf_pitch;
+  m.nxtnf = m.nxtpf + m.nxtf_pitch;
+  m.nxtnnf = m.nxtnf + m.nxtf_pitch;
+
+  m.map_pitch <<= 1;
+  m.mapn = m.mapp + m.map_pitch;
+}
+
 int TFM::compareFields(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
   int match2, int& norm1, int& norm2, int& mtn1, int& mtn2, int n)
 {
@@ -974,7 +1056,6 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
   const int bits_per_pixel = vi->format.bitsPerSample;
 
   int ret;
-  int y0a, y1a; // exclusion regio
 
   const int stop = vi->format.numPlanes == 1 || !mChroma ? 1 : 3;
   const int incl = 1;  // pixel increment (1 for planar)
@@ -988,58 +1069,19 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
   {
     const int plane = b;
 
-    uint8_t *mapp = vsapi->getWritePtr(map.get(), b);
-    ptrdiff_t map_pitch = vsapi->getStride(map.get(), b);
+    MatchPlane<pixel_t> m;
+    setupMatchPlane<pixel_t>(prv, src, nxt, plane, match1, match2, false, m);
 
-    const pixel_t* prvp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(prv, plane));
-    const ptrdiff_t prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
-
-    const pixel_t* srcp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
-    const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
-
-    const int Width = vsapi->getFrameWidth(src, plane);
-    const int Height = vsapi->getFrameHeight(src, plane);
-
-    const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
-    const ptrdiff_t nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
-
-    const int startx = 8 >> (plane ? vi->format.subSamplingW : 0);
-    const int stopx = Width - startx;
-
-    const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
-    ptrdiff_t prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
-
-    curf_pitch = src_pitch << 1;
-    // exclusion area limits from parameters
-    if (b == 0)
-    { 
-      y0a = y0; 
-      y1a = y1;
-    }
-    else 
-    { 
-      const int ysubsampling = (plane ? vi->format.subSamplingH : 0);
-      y0a = y0 >> ysubsampling;
-      y1a = y1 >> ysubsampling;
-    }
-    const bool noBandExclusion = (y0a == y1a);
-    if (y0a >= 2) y0a = y0a - 2; // v18: real limit, since y goes only till Height-2
-    if (y1a <= Height - 2) y1a = y1a + 2; // v18: real limit, since y goes only from 2
-
-    curf = srcp + curfRow(match1, field) * src_pitch;
-    mapp = mapp + mapRow(match1, field) * map_pitch;
-    selectMatchField(match1, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
-      prvpf, prvf_pitch);
-    selectMatchField(match2, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
-      nxtpf, nxtf_pitch);
-
-    const pixel_t* prvnf = prvpf + prvf_pitch;
-    const pixel_t* curpf = curf - curf_pitch;
-    const pixel_t* curnf = curf + curf_pitch;
-    const pixel_t* nxtnf = nxtpf + nxtf_pitch;
-
-    map_pitch <<= 1;
-    uint8_t* mapn = mapp + map_pitch;
+    const int Width = m.Width, Height = m.Height;
+    const int startx = m.startx, stopx = m.stopx;
+    const int y0a = m.y0a, y1a = m.y1a;
+    const bool noBandExclusion = m.noBandExclusion;
+    const ptrdiff_t prvf_pitch = m.prvf_pitch, curf_pitch = m.curf_pitch, nxtf_pitch = m.nxtf_pitch;
+    ptrdiff_t map_pitch = m.map_pitch;
+    const pixel_t *prvpf = m.prvpf, *prvnf = m.prvnf;
+    const pixel_t *curpf = m.curpf, *curf = m.curf, *curnf = m.curnf;
+    const pixel_t *nxtpf = m.nxtpf, *nxtnf = m.nxtnf;
+    uint8_t *mapp = m.mapp, *mapn = m.mapn;
 
     // back to byte pointers
     if ((match1 >= 3 && field == 1) || (match1 < 3 && field != 1))
@@ -1130,7 +1172,6 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
   const int bits_per_pixel = vi->format.bitsPerSample;
 
   int ret;
-  int y0a, y1a;  // exclusion regio
 
   ptrdiff_t tpitch_current;
 
@@ -1146,63 +1187,20 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
   {
     const int plane = b;
 
-    uint8_t* mapp = vsapi->getWritePtr(map.get(), b);
-    ptrdiff_t map_pitch = vsapi->getStride(map.get(), b);
+    MatchPlane<pixel_t> m;
+    setupMatchPlane<pixel_t>(prv, src, nxt, plane, match1, match2, true, m);
 
-    const pixel_t* prvp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(prv, plane));
-    const ptrdiff_t prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
-
-    const pixel_t* srcp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
-    const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
-
-    const int Width = vsapi->getFrameWidth(src, plane);
-    const int Height = vsapi->getFrameHeight(src, plane);
-
-    const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
-    const ptrdiff_t nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
-
-    const int startx = 8 >> (plane ? vi->format.subSamplingW : 0);
-    const int stopx = Width - startx;
-
-    const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
-    ptrdiff_t prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
-
-    curf_pitch = src_pitch << 1;
-
-    memset(mapp, 0, Height * map_pitch);
-
-    // exclusion area limits from parameters
-    if (b == 0)
-    { 
-      y0a = y0; 
-      y1a = y1; 
-      tpitch_current = tpitchy; // plus compared to simple compareFields
-    }
-    else
-    { 
-      const int ysubsampling = vi->format.subSamplingH;
-      y0a = y0 >> ysubsampling;
-      y1a = y1 >> ysubsampling;
-      tpitch_current = tpitchuv; // plus compared to simple compareFields
-    }
-    const bool noBandExclusion = (y0a == y1a);
-    if (y0a >= 2) y0a = y0a - 2; // v18: real limit, since y goes only till Height-2
-    if (y1a <= Height - 2) y1a = y1a + 2; // v18: real limit, since y goes only from 2
-
-    curf = srcp + curfRow(match1, field) * src_pitch;
-    mapp = mapp + mapRow(match1, field) * map_pitch;
-    selectMatchField(match1, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
-      prvpf, prvf_pitch);
-    selectMatchField(match2, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
-      nxtpf, nxtf_pitch);
-
-    const pixel_t* prvnf = prvpf + prvf_pitch;
-    const pixel_t* curpf = curf - curf_pitch;
-    const pixel_t* curnf = curf + curf_pitch;
-    const pixel_t* nxtnf = nxtpf + nxtf_pitch;
-
-    map_pitch <<= 1;
-    uint8_t* mapn = mapp + map_pitch;
+    const int Width = m.Width, Height = m.Height;
+    const int startx = m.startx, stopx = m.stopx;
+    const int y0a = m.y0a, y1a = m.y1a;
+    const bool noBandExclusion = m.noBandExclusion;
+    const ptrdiff_t prvf_pitch = m.prvf_pitch, curf_pitch = m.curf_pitch, nxtf_pitch = m.nxtf_pitch;
+    ptrdiff_t map_pitch = m.map_pitch;
+    const pixel_t *prvpf = m.prvpf, *prvnf = m.prvnf;
+    const pixel_t *curpf = m.curpf, *curf = m.curf, *curnf = m.curnf;
+    const pixel_t *nxtpf = m.nxtpf, *nxtnf = m.nxtnf;
+    uint8_t *mapp = m.mapp, *mapn = m.mapn;
+    tpitch_current = m.tpitch_current;
 
     // back to byte pointers
       if ((match1 >= 3 && field == 1) || (match1 < 3 && field != 1))
@@ -1298,7 +1296,6 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
   const int bits_per_pixel = vi->format.bitsPerSample;
 
   int ret;
-  int y0a, y1a;  // exclusion regio
 
   ptrdiff_t tpitch_current;
 
@@ -1313,69 +1310,23 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
   for (int b = 0; b < stop; ++b)
   {
     const int plane = b;
-    uint8_t* mapp = vsapi->getWritePtr(map.get(), b);
-    ptrdiff_t map_pitch = vsapi->getStride(map.get(), b);
 
-    const pixel_t* prvp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(prv, plane));
-    const ptrdiff_t prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
+    MatchPlane<pixel_t> m;
+    setupMatchPlane<pixel_t>(prv, src, nxt, plane, match1, match2, true, m);
 
-    const pixel_t* srcp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
-    const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
-
-    const int Width = vsapi->getFrameWidth(src, plane);
-    const int Height = vsapi->getFrameHeight(src, plane);
-
-    const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
-    const ptrdiff_t nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
-
-    const int startx = 8 >> (plane ? vi->format.subSamplingW : 0);
-    const int stopx = Width - startx;
-
-    const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
-    ptrdiff_t prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
-
-    curf_pitch = src_pitch << 1;
-
-    memset(mapp, 0, Height * map_pitch);
-
-    // exclusion area limits from parameters
-    if (b == 0)
-    {
-      y0a = y0;
-      y1a = y1;
-      tpitch_current = tpitchy;
-    }
-    else 
-    { 
-      const int ysubsampling = vi->format.subSamplingH;
-      y0a = y0 >> ysubsampling;
-      y1a = y1 >> ysubsampling;
-      tpitch_current = tpitchuv;
-    }
-    const bool noBandExclusion = (y0a == y1a);
-    if (y0a >= 2) y0a = y0a - 2; // v18: real limit, since y goes only till Height-2
-    if (y1a <= Height - 2) y1a = y1a + 2; // v18: real limit, since y goes only from 2
-
-    curf = srcp + curfRow(match1, field) * src_pitch;
-    mapp = mapp + mapRow(match1, field) * map_pitch;
-    selectMatchField(match1, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
-      prvpf, prvf_pitch);
-    selectMatchField(match2, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
-      nxtpf, nxtf_pitch);
-
-    const pixel_t* prvppf = prvpf - prvf_pitch;
-    const pixel_t* prvnf = prvpf + prvf_pitch;
-    const pixel_t* prvnnf = prvnf + prvf_pitch;
-
-    const pixel_t* curpf = curf - curf_pitch;
-    const pixel_t* curnf = curf + curf_pitch;
-
-    const pixel_t* nxtppf = nxtpf - nxtf_pitch;
-    const pixel_t* nxtnf = nxtpf + nxtf_pitch;
-    const pixel_t* nxtnnf = nxtnf + nxtf_pitch;
-
-    map_pitch <<= 1;
-    uint8_t* mapn = mapp + map_pitch;
+    const int Width = m.Width, Height = m.Height;
+    const int startx = m.startx, stopx = m.stopx;
+    const int y0a = m.y0a, y1a = m.y1a;
+    const bool noBandExclusion = m.noBandExclusion;
+    const ptrdiff_t prvf_pitch = m.prvf_pitch, curf_pitch = m.curf_pitch, nxtf_pitch = m.nxtf_pitch;
+    ptrdiff_t map_pitch = m.map_pitch;
+    const pixel_t *prvpf = m.prvpf, *prvnf = m.prvnf;
+    const pixel_t *curpf = m.curpf, *curf = m.curf, *curnf = m.curnf;
+    const pixel_t *nxtpf = m.nxtpf, *nxtnf = m.nxtnf;
+    uint8_t *mapp = m.mapp, *mapn = m.mapn;
+    tpitch_current = m.tpitch_current;
+    const pixel_t *prvppf = m.prvppf, *prvnnf = m.prvnnf;
+    const pixel_t *nxtppf = m.nxtppf, *nxtnnf = m.nxtnnf;
 
     // back to byte pointers
       if ((match1 >= 3 && field == 1) || (match1 < 3 && field != 1))
@@ -1804,33 +1755,9 @@ template void TFM::buildABSDiffMask<uint16_t>(const uint8_t* prvp, const uint8_t
   ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height);
 
 
-TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char* _ovr,
-  const char* _input, const char* _output, const char * _outputC, bool _debug, bool _display,
-  int _slow, bool _mChroma, int _cNum, int _cthresh, int _MI, bool _chroma, int _blockx,
-  int _blocky, int _y0, int _y1, const char* _d2v, int _ovrDefault, int _flags, double _scthresh,
-  int _micout, int _micmatching, const char* _trimIn, bool _usehints, int _metric, bool _batch,
-  bool _ubsco, bool _mmsco, int _opt, const VSAPI *_vsapi, VSCore *core)
-    : vsapi(_vsapi), child(_child),
-  order(_order), field(_field), mode(_mode), PP(_PP), ovr(_ovr), input(_input), output(_output),
-  outputC(_outputC), debug(_debug), display(_display), vscore(core), slow(_slow), mChroma(_mChroma), cNum(_cNum),
-  cthresh(_cthresh), MI(_MI), chroma(_chroma), blockx(_blockx), blocky(_blocky), y0(_y0),
-  y1(_y1), d2v(_d2v), ovrDefault(_ovrDefault), flags(_flags), scthresh(_scthresh), micout(_micout),
-  micmatching(_micmatching), trimIn(_trimIn), usehints(_usehints), metric(_metric),
-  batch(_batch), ubsco(_ubsco), mmsco(_mmsco), opt(_opt),
-  map(nullptr, nullptr), cmask(nullptr, nullptr)
+// Reject parameter combinations the rest of the filter assumes cannot occur.
+void TFM::validateParameters()
 {
-    vi = vsapi->getVideoInfo(child);
-
-  int z, w, q = 0, b, i, count, last, fieldt, firstLine, qt;
-  int countOvrS, countOvrM;
-  char linein[1024];
-  char *linep, *linet;
-  std::unique_ptr<FILE, decltype (&fclose)> f(nullptr, nullptr);
-
-
-
-  if (debug) logInfo(vsapi, vscore, "TFM:  %s by tritical", VERSION);
-
   if (!vsh::isConstantVideoFormat(vi))
       throw TIVTCError("TFM: the input clip must have constant format and dimensions.");
 
@@ -1886,105 +1813,16 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
     throw TIVTCError("TFM:  metric must be set to 0 or 1!");
   if (scthresh < 0.0 || scthresh > 100.0)
     throw TIVTCError("TFM:  scthresh must be between 0.0 and 100.0 (inclusive)!");
+}
 
-//  child->SetCacheHints(CACHE_GENERIC, 3);  // fixed to diameter (07/30/2005)
-
-  lastMatch.frame = lastMatch.field = lastMatch.combed = lastMatch.match = -20;
-  nfrms = vi->numFrames - 1;
-  mode_origSaved = mode;
-  PP_origSaved = PP;
-  MI_origSaved = MI;
-  d2vpercent = -20.00f;
-  vidCount = 0;
-
-  xhalf = blockx >> 1;
-  yhalf = blocky >> 1;
-  
-  xshift = blockx == 4 ? 2 : blockx == 8 ? 3 : blockx == 16 ? 4 : blockx == 32 ? 5 :
-    blockx == 64 ? 6 : blockx == 128 ? 7 : blockx == 256 ? 8 : blockx == 512 ? 9 :
-    blockx == 1024 ? 10 : 11;
-  yshift = blocky == 4 ? 2 : blocky == 8 ? 3 : blocky == 16 ? 4 : blocky == 32 ? 5 :
-    blocky == 64 ? 6 : blocky == 128 ? 7 : blocky == 256 ? 8 : blocky == 512 ? 9 :
-    blocky == 1024 ? 10 : 11;
-
-  
-  // no high bit depth scaling here
-  // Warning: this mod16 must match with the calculation in "checkSceneChange"
-  // Keep the pixel count in floating point: width*height*219 overflows a 32 bit int above
-  // roughly 9.8 megapixels (5K and up).
-  diffmaxsc = (uint64_t)((double((vi->width >> 4) << 4) * vi->height * (235 - 16) * scthresh * 0.5) / 100.0);
-
-  // These modes depend on the previously processed frame. PluginInit must keep this condition in
-  // sync with the filter mode it picks; GetFrame enforces the ordering.
-  linearAccess = (mode == 7) || d2v.size() > 0;
-
-  sclast.frame = -20;
-  sclast.sc = true;
-
-  if (mode == 1 || mode == 2 || mode == 3 || mode == 5 || mode == 6 || mode == 7 ||
-    PP > 0 || micout > 0 || micmatching > 0)
-  {
-    cArray.resize((size_t)(((vi->width + xhalf) >> xshift) + 1) * (((vi->height + yhalf) >> yshift) + 1) * 4);
-    cmask = decltype(cmask) (vsapi->newVideoFrame(&vi->format, vi->width, vi->height, nullptr, core), vsapi->freeFrame);
-  }
-
-  // prepare map format: always 8 bits
-  VSVideoFormat map_format;
-  if (!vsapi->queryVideoFormat(&map_format, vi->format.colorFamily, vi->format.sampleType, 8, vi->format.subSamplingW, vi->format.subSamplingH, core))
-      throw TIVTCError("TFM:  could not create the 8 bit mask format!");
-  map = decltype(map) (vsapi->newVideoFrame(&map_format, vi->width, vi->height, nullptr, core), vsapi->freeFrame);
-
-  if (d2v.size())
-  {
-    parseD2V();
-
-    trimArray.resize(0);
-  }
-  order_origSaved = order;
-  field_origSaved = fieldO = field;
-  if (fieldO == -1)
-  {
-    if (order == -1) {
-        char error[512] = "TFM: Couldn't fetch the first frame from the input clip to determine the clip's field order. Reason: ";
-        size_t len = strlen(error);
-
-        const VSFrame *first_frame = vsapi->getFrame(0, child, error + len, (int)(512 - len));
-        if (first_frame == nullptr) {
-            throw TIVTCError(error);
-        }
-        const VSMap *props = vsapi->getFramePropertiesRO(first_frame);
-
-        int err;
-        int64_t field_based = vsapi->mapGetInt(props, "_FieldBased", 0, &err);
-        vsapi->freeFrame(first_frame);
-        if (err) {
-            throw TIVTCError("TFM: Couldn't find the '_FieldBased' frame property. The 'order' parameter must be used.");
-        }
-
-        /// Pretend it's top field first when it says progressive?
-        fieldO = (field_based == TopFieldFirst || field_based == Progressive);
-
-    }
-    else fieldO = order;
-  }
-  tpitchy = tpitchuv = -20;
-  
-  const int ALIGN_BUF = 64;
-
-  // Rounds up the number "n" to the next greater multiple of "align"
-#define ALIGN_NUMBER(n, align) (((n) + (align)-1) & (~((align)-1)))
-
-  {
-    // tbuffer is 8 or 16 bits wide
-    const int pixelsize = vi->format.bytesPerSample;
-    tpitchy = ALIGN_NUMBER(vi->width * pixelsize, ALIGN_BUF);
-    const int widthUV = vi->format.numPlanes > 1 ? vi->width >> vi->format.subSamplingW : 0;
-    tpitchuv = ALIGN_NUMBER(widthUV * pixelsize, ALIGN_BUF);
-  }
-#undef ALIGN_NUMBER
-
-  tbuffer.resize((size_t)(vi->height >> 1) * tpitchy);
-  mode7_field = field;
+// Parse the input= file produced by a previous run's output=: per-frame match codes, combed
+// flags and mic values, plus the crc32 header line that ties it to this source clip.
+void TFM::parseInputFile()
+{
+  int z, q = 0, fieldt, firstLine, qt;
+  char linein[1024];
+  char *linep, *linet;
+  std::unique_ptr<FILE, decltype (&fclose)> f(nullptr, nullptr);
   if (input.size())
   {
     bool d2vmarked, micmarked;
@@ -2127,7 +1965,20 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
     }
     else throw TIVTCError("TFM:  input file error (could not open file)!");
   }
-  if (ovr.size())
+}
+
+// Parse the ovr= override file: two passes, one to count the entries so the arrays can be
+// sized and one to fill them. Returns early when the file turned out to hold no usable
+// entries (this was a `goto emptyovr` out of the middle of the constructor).
+void TFM::parseOvrFile()
+{
+  if (!ovr.size()) return;
+
+  int z, w, q = 0, b, i, count, last, fieldt, firstLine;
+  int countOvrS, countOvrM;
+  char linein[1024];
+  char *linep, *linet;
+  std::unique_ptr<FILE, decltype (&fclose)> f(nullptr, nullptr);
   {
     if ((f = decltype (f)(tivtc_fopen(ovr.c_str(), "r"), &fclose)) != nullptr)
     {
@@ -2167,7 +2018,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
           }
         }
       }
-      if (countOvrS == 0 && countOvrM == 0) { goto emptyovr; }
+      if (countOvrS == 0 && countOvrM == 0) return;
       if (countOvrS > 0)
       {
         ++countOvrS;
@@ -2483,7 +2334,13 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
         throw TIVTCError("TFM:  ovr input error (could not open ovr file)!");
     }
   }
-emptyovr:
+}
+
+// Open the match/combed output files, resolve their full paths and size the per-frame arrays
+// they will be flushed from in the destructor.
+void TFM::setupOutputFiles()
+{
+  std::unique_ptr<FILE, decltype (&fclose)> f(nullptr, nullptr);
   if (output.size())
   {
     if ((f = decltype (f)(tivtc_fopen(output.c_str(), "w"), &fclose)) != nullptr)
@@ -2522,6 +2379,132 @@ emptyovr:
   ///
 }
 
+TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char* _ovr,
+  const char* _input, const char* _output, const char * _outputC, bool _debug, bool _display,
+  int _slow, bool _mChroma, int _cNum, int _cthresh, int _MI, bool _chroma, int _blockx,
+  int _blocky, int _y0, int _y1, const char* _d2v, int _ovrDefault, int _flags, double _scthresh,
+  int _micout, int _micmatching, const char* _trimIn, bool _usehints, int _metric, bool _batch,
+  bool _ubsco, bool _mmsco, int _opt, const VSAPI *_vsapi, VSCore *core)
+    : vsapi(_vsapi), child(_child),
+  order(_order), field(_field), mode(_mode), PP(_PP), ovr(_ovr), input(_input), output(_output),
+  outputC(_outputC), debug(_debug), display(_display), vscore(core), slow(_slow), mChroma(_mChroma), cNum(_cNum),
+  cthresh(_cthresh), MI(_MI), chroma(_chroma), blockx(_blockx), blocky(_blocky), y0(_y0),
+  y1(_y1), d2v(_d2v), ovrDefault(_ovrDefault), flags(_flags), scthresh(_scthresh), micout(_micout),
+  micmatching(_micmatching), trimIn(_trimIn), usehints(_usehints), metric(_metric),
+  batch(_batch), ubsco(_ubsco), mmsco(_mmsco), opt(_opt),
+  map(nullptr, nullptr), cmask(nullptr, nullptr)
+{
+    vi = vsapi->getVideoInfo(child);
+
+
+
+
+  if (debug) logInfo(vsapi, vscore, "TFM:  %s by tritical", VERSION);
+
+  validateParameters();
+
+//  child->SetCacheHints(CACHE_GENERIC, 3);  // fixed to diameter (07/30/2005)
+
+  lastMatch.frame = lastMatch.field = lastMatch.combed = lastMatch.match = -20;
+  nfrms = vi->numFrames - 1;
+  mode_origSaved = mode;
+  PP_origSaved = PP;
+  MI_origSaved = MI;
+  d2vpercent = -20.00f;
+  vidCount = 0;
+
+  xhalf = blockx >> 1;
+  yhalf = blocky >> 1;
+  
+  xshift = blockx == 4 ? 2 : blockx == 8 ? 3 : blockx == 16 ? 4 : blockx == 32 ? 5 :
+    blockx == 64 ? 6 : blockx == 128 ? 7 : blockx == 256 ? 8 : blockx == 512 ? 9 :
+    blockx == 1024 ? 10 : 11;
+  yshift = blocky == 4 ? 2 : blocky == 8 ? 3 : blocky == 16 ? 4 : blocky == 32 ? 5 :
+    blocky == 64 ? 6 : blocky == 128 ? 7 : blocky == 256 ? 8 : blocky == 512 ? 9 :
+    blocky == 1024 ? 10 : 11;
+
+  
+  // no high bit depth scaling here
+  // Warning: this mod16 must match with the calculation in "checkSceneChange"
+  // Keep the pixel count in floating point: width*height*219 overflows a 32 bit int above
+  // roughly 9.8 megapixels (5K and up).
+  diffmaxsc = (uint64_t)((double((vi->width >> 4) << 4) * vi->height * (235 - 16) * scthresh * 0.5) / 100.0);
+
+  // These modes depend on the previously processed frame. PluginInit must keep this condition in
+  // sync with the filter mode it picks; GetFrame enforces the ordering.
+  linearAccess = (mode == 7) || d2v.size() > 0;
+
+  sclast.frame = -20;
+  sclast.sc = true;
+
+  if (mode == 1 || mode == 2 || mode == 3 || mode == 5 || mode == 6 || mode == 7 ||
+    PP > 0 || micout > 0 || micmatching > 0)
+  {
+    cArray.resize((size_t)(((vi->width + xhalf) >> xshift) + 1) * (((vi->height + yhalf) >> yshift) + 1) * 4);
+    cmask = decltype(cmask) (vsapi->newVideoFrame(&vi->format, vi->width, vi->height, nullptr, core), vsapi->freeFrame);
+  }
+
+  // prepare map format: always 8 bits
+  VSVideoFormat map_format;
+  if (!vsapi->queryVideoFormat(&map_format, vi->format.colorFamily, vi->format.sampleType, 8, vi->format.subSamplingW, vi->format.subSamplingH, core))
+      throw TIVTCError("TFM:  could not create the 8 bit mask format!");
+  map = decltype(map) (vsapi->newVideoFrame(&map_format, vi->width, vi->height, nullptr, core), vsapi->freeFrame);
+
+  if (d2v.size())
+  {
+    parseD2V();
+
+    trimArray.resize(0);
+  }
+  order_origSaved = order;
+  field_origSaved = fieldO = field;
+  if (fieldO == -1)
+  {
+    if (order == -1) {
+        char error[512] = "TFM: Couldn't fetch the first frame from the input clip to determine the clip's field order. Reason: ";
+        size_t len = strlen(error);
+
+        const VSFrame *first_frame = vsapi->getFrame(0, child, error + len, (int)(512 - len));
+        if (first_frame == nullptr) {
+            throw TIVTCError(error);
+        }
+        const VSMap *props = vsapi->getFramePropertiesRO(first_frame);
+
+        int err;
+        int64_t field_based = vsapi->mapGetInt(props, "_FieldBased", 0, &err);
+        vsapi->freeFrame(first_frame);
+        if (err) {
+            throw TIVTCError("TFM: Couldn't find the '_FieldBased' frame property. The 'order' parameter must be used.");
+        }
+
+        /// Pretend it's top field first when it says progressive?
+        fieldO = (field_based == TopFieldFirst || field_based == Progressive);
+
+    }
+    else fieldO = order;
+  }
+  tpitchy = tpitchuv = -20;
+  
+  const int ALIGN_BUF = 64;
+
+  // Rounds up the number "n" to the next greater multiple of "align"
+#define ALIGN_NUMBER(n, align) (((n) + (align)-1) & (~((align)-1)))
+
+  {
+    // tbuffer is 8 or 16 bits wide
+    const int pixelsize = vi->format.bytesPerSample;
+    tpitchy = ALIGN_NUMBER(vi->width * pixelsize, ALIGN_BUF);
+    const int widthUV = vi->format.numPlanes > 1 ? vi->width >> vi->format.subSamplingW : 0;
+    tpitchuv = ALIGN_NUMBER(widthUV * pixelsize, ALIGN_BUF);
+  }
+#undef ALIGN_NUMBER
+
+  tbuffer.resize((size_t)(vi->height >> 1) * tpitchy);
+  mode7_field = field;
+  parseInputFile();
+  parseOvrFile();
+  setupOutputFiles();
+}
 TFM::~TFM()
 {
   if (outArray.size())

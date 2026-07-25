@@ -91,21 +91,6 @@ void TDecimate::displayOutput(VSFrame *dst, int n,
 
       text += "\n";
 
-//      Draw(dst, current_column_x, y++, buf, vi_disp);
-      // retd is 
-      // >=0: column width printed 
-      // -1 if does not fit vertically 
-      // (-2-length_written) if does not fit horizontally
-//      if (y >= MAX_Y)
-//      {
-        // does not fit vertically
-//        current_column_x += max_column_width + 2; // make x to next column, leaving a gap
-//        max_column_width = 0; // reset width counter
-//        y = y_saved; // back to the top of the area
-//        Draw(dst, current_column_x, y++, buf, vi_disp);
-//      }
-//      else
-//        max_column_width = std::max(max_column_width, len); // get max width so far in current column
       mp = mc;
       if (x < curr.cycleE - 1) mc = curr.match[x + 1];
     }

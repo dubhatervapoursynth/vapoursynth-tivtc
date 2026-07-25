@@ -189,6 +189,14 @@ private:
   void formatDecs(std::string &buf, Cycle &current);
   void addMetricCycle(const Cycle &j);
   bool checkForObviousDecFrame(Cycle &p, Cycle &c, Cycle &n);
+  // set while parsing the metrics/tfmIn files, read by the mode setup that follows
+  bool tfmFullInfo = false, metricsFullInfo = false;
+
+  void parseMetricsFiles();
+  void parseOvrFile();
+  void parseTfmInFile();
+  void setupModeState();
+  bool tryTwoDropMostSimilar(Cycle &p, Cycle &c, Cycle &n);
   void mostSimilarDecDecision(Cycle &p, Cycle &c, Cycle &n);
   int checkForD2VDecFrame(Cycle &p, Cycle &c, Cycle &n);
   bool checkForTwoDropLongestString(Cycle &p, Cycle &c, Cycle &n);

@@ -1298,6 +1298,67 @@ bool TDecimate::checkForTwoDropLongestString(Cycle &p, Cycle &c, Cycle &n)
   return true;
 }
 
+// The "two drops in one cycle" case for most-similar decimation: the cycle must hold exactly two
+// match duplicates, positioned to line up with a single duplicate in each neighbouring cycle, and
+// they must be the cycle's two lowest-metric frames and not adjacent. Any condition failing means
+// the pattern does not apply, and the caller falls back to its single-drop heuristic. This used to
+// be a chain of six `goto tryother` jumps out of the middle of mostSimilarDecDecision.
+bool TDecimate::tryTwoDropMostSimilar(Cycle &p, Cycle &c, Cycle &n)
+{
+  if (!(c.dupCount == 2 && p.dupCount == 1 && n.dupCount == 1))
+    return false;
+
+  uint64_t lowestp = UINT64_MAX, lowestn = UINT64_MAX;
+  int savedp = -1, savedn = -1, savedc1, savedc2, v, i;
+
+  for (v = -1, i = p.cycleS; i < p.cycleE; ++i)
+  {
+    if (p.dupArray[i] == 1) savedp = i;
+    if (p.diffMetricsU[i] < lowestp) { v = i; lowestp = p.diffMetricsU[i]; }
+  }
+  if (savedp != v || v == -1) return false;
+
+  for (v = -1, i = n.cycleS; i < n.cycleE; ++i)
+  {
+    if (n.dupArray[i] == 1) savedn = i;
+    if (n.diffMetricsU[i] < lowestn) { v = i; lowestn = n.diffMetricsU[i]; }
+  }
+  if (savedn != v || v == -1 || savedn == savedp) return false;
+
+  for (savedc1 = -1, savedc2 = -1, i = c.cycleS; i < c.cycleE; ++i)
+  {
+    if (c.dupArray[i] == 1)
+    {
+      if (savedc1 == -1) savedc1 = i;
+      else if (savedc2 == -1) savedc2 = i;
+    }
+  }
+  if (savedc1 != savedp || savedc2 != savedn) return false;
+  if (savedc1 != c.lowest[0] && savedc1 != c.lowest[1]) return false;
+  if (savedc2 != c.lowest[0] && savedc2 != c.lowest[1]) return false;
+  if (abs(savedc1 - savedc2) <= 1) return false;
+
+  if (hybrid == 0 && noblend)
+  {
+    if (c.diffMetricsU[savedc1] <= c.diffMetricsU[savedc2])
+      c.decimate[savedc1] = c.decimate2[savedc1] = 1;
+    else
+      c.decimate[savedc2] = c.decimate2[savedc2] = 1;
+    c.decSet = true;
+  }
+  else
+  {
+    c.blend = 3;
+    c.decimate[savedc1] = c.decimate2[savedc1] = 1;
+    c.decimate[savedc2] = c.decimate2[savedc2] = 1;
+    c.decSet = true;
+    if (debug)
+      logInfo(vsapi, vscore, "TDecimate:  drop two frames most similar  %d:%d - %d!",
+        savedc1, savedc2, c.frameSO);
+  }
+  return true;
+}
+
 void TDecimate::mostSimilarDecDecision(Cycle &p, Cycle &c, Cycle &n)
 {
   if (!c.lowSet) c.setLowest(false);
@@ -1382,55 +1443,12 @@ void TDecimate::mostSimilarDecDecision(Cycle &p, Cycle &c, Cycle &n)
   }
   else
   {
-    uint64_t lowestp = UINT64_MAX, lowestn = UINT64_MAX;
-    int savedp = -1, savedn = -1, savedc1, savedc2, v;
-    if (c.dupCount == 2 && p.dupCount == 1 && n.dupCount == 1)
-    {
-      for (v = -1, i = p.cycleS; i < p.cycleE; ++i)
-      {
-        if (p.dupArray[i] == 1) savedp = i;
-        if (p.diffMetricsU[i] < lowestp) { v = i; lowestp = p.diffMetricsU[i]; }
-      }
-      if (savedp != v || v == -1) goto tryother;
-      for (v = -1, i = n.cycleS; i < n.cycleE; ++i)
-      {
-        if (n.dupArray[i] == 1) savedn = i;
-        if (n.diffMetricsU[i] < lowestn) { v = i; lowestn = n.diffMetricsU[i]; }
-      }
-      if (savedn != v || v == -1 || savedn == savedp) goto tryother;
-      for (savedc1 = -1, savedc2 = -1, i = c.cycleS; i < c.cycleE; ++i)
-      {
-        if (c.dupArray[i] == 1)
-        {
-          if (savedc1 == -1) savedc1 = i;
-          else if (savedc2 == -1) savedc2 = i;
-        }
-      }
-      if (savedc1 != savedp || savedc2 != savedn) goto tryother;
-      if (savedc1 != c.lowest[0] && savedc1 != c.lowest[1]) goto tryother;
-      if (savedc2 != c.lowest[0] && savedc2 != c.lowest[1]) goto tryother;
-      if (abs(savedc1 - savedc2) <= 1) goto tryother;
-      if (hybrid == 0 && noblend)
-      {
-        if (c.diffMetricsU[savedc1] <= c.diffMetricsU[savedc2])
-          c.decimate[savedc1] = c.decimate2[savedc1] = 1;
-        else
-          c.decimate[savedc2] = c.decimate2[savedc2] = 1;
-        c.decSet = true;
-      }
-      else
-      {
-        c.blend = 3;
-        c.decimate[savedc1] = c.decimate2[savedc1] = 1;
-        c.decimate[savedc2] = c.decimate2[savedc2] = 1;
-        c.decSet = true;
-        if (debug)
-          logInfo(vsapi, vscore, "TDecimate:  drop two frames most similar  %d:%d - %d!",
-            savedc1, savedc2, c.frameSO);
-      }
+    if (tryTwoDropMostSimilar(p, c, n))
       return;
-    }
-  tryother:
+
+    // No clean two-drop pattern: fall back to the duplicate that stands out most from its
+    // neighbours, provided it is also one of the cycle's lowest-metric frames.
+    int v;
     int savedc = -1;
     // metricP/metricN are only read once savedc != -1, i.e. after they have been assigned, but
     // initialize them so that invariant doesn't have to hold for the code to be well defined.
@@ -2637,217 +2655,14 @@ void TDecimate::init_mode_5(VSCore *core) {
   buildMode5LUT(input_magic_numbers);
 } // init mode 5
 
-TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double _rate,
-  double _dupThresh, double _vidThresh, double _sceneThresh, int _hybrid,
-  int _vidDetect, int _conCycle, int _conCycleTP, const char* _ovr,
-  const char* _output, const char* _input, const char* _tfmIn, const char* _mkvOut,
-  int _nt, int _blockx, int _blocky, bool _debug, bool _display, int _vfrDec,
-  bool _batch, bool _tcfv1, bool _se, bool _chroma, bool _exPP, int _maxndl, bool _m2PA,
-  bool _predenoise, bool _noblend, bool _ssd, bool _usehints, VSNode *_clip2,
-  int _sdlim, int _opt, const char* _orgOut, const VSAPI *_vsapi, VSCore *core)
-    : vsapi(_vsapi), child(_child),
-  mode(_mode),
-  cycleR(_cycleR), cycle(_cycle), rate(_rate), dupThresh(_dupThresh),
-  hybrid(_hybrid), vidThresh(_vidThresh),
-  conCycleTP(_conCycleTP), vidDetect(_vidDetect), sceneThresh(_sceneThresh),
-  conCycle(_conCycle), ovr(_ovr), input(_input),
-  nt(_nt), output(_output), mkvOut(_mkvOut), tfmIn(_tfmIn), blockx(_blockx), blocky(_blocky),
-  vfrDec(_vfrDec), debug(_debug), display(_display), vscore(core), batch(_batch), tcfv1(_tcfv1), se(_se),
-  maxndl(_maxndl), chroma(_chroma), m2PA(_m2PA), exPP(_exPP),
-  noblend(_noblend), predenoise(_predenoise), ssd(_ssd), sdlim(_sdlim),
-  opt(_opt), clip2(_clip2), orgOut(_orgOut),
-  prev(5, 0), curr(5, 0), next(5, 0), nbuf(5, 0), usehints(_usehints)
+// Open the metrics output= file and/or read back a previous run's metrics via input=,
+// including the crc32/blockx/blocky header line that ties the file to this source clip.
+void TDecimate::parseMetricsFiles()
 {
-    vi_child = vsapi->getVideoInfo(child);
-    vi = *vi_child;
-
-  mkvOutF = nullptr;
+  char linein[1024];
+  char *linep, *linet;
   FILE *f = nullptr;
-  char linein[1024], *linep, *linet;
-  
-  bool tfmFullInfo = false, metricsFullInfo = false;
-  
-  if (vi.fpsDen == 0 && (mode == 2 || mode == 3 || mode == 5 || mode == 7))
-    throw TIVTCError("TDecimate:  modes 2, 3, 5 and 7 require a clip with a known constant frame rate (fpsDen != 0)!");
-  fps = (double)vi.fpsNum / (double)vi.fpsDen;
 
-
-  if (!vsh::isConstantVideoFormat(&vi))
-      throw TIVTCError("TDecimate: the clip must have constant format and dimensions.");
-
-  if (vi.format.bitsPerSample > 16)
-    throw TIVTCError("TDecimate:  only 8-16 bit formats supported!");
-  if (vi.format.colorFamily != cfYUV)
-    throw TIVTCError("TDecimate:  YUV colorspaces only!");
-  if (vi.format.subSamplingW > 1 || vi.format.subSamplingH > 1 ||
-    vi.format.subSamplingH > vi.format.subSamplingW)
-    throw TIVTCError("TDecimate:  only 4:4:4, 4:2:2 and 4:2:0 subsampling is supported!");
-  if (mode < 0 || mode > 7)
-    throw TIVTCError("TDecimate:  mode must be set to 0, 1, 2, 3, 4, 5, 6, or 7!");
-  if (mode == 3 && mkvOut.empty())
-    throw TIVTCError("TDecimate:  an mkvOut file must be specified in mode 3!");
-  if (mode == 5 && mkvOut.empty())
-    throw TIVTCError("TDecimate:  an mkvOut file must be specified in mode 5!");
-  if (mode == 6 && mkvOut.empty())
-    throw TIVTCError("TDecimate:  an mkvOut file must be specified in mode 6!");
-  if (mode == 6 && input.empty())
-    throw TIVTCError("TDecimate:  mode 6 requires an input file containing precalculated metrics!");
-  if (hybrid < 0 || hybrid > 3)
-    throw TIVTCError("TDecimate:  hybrid must be set to 0, 1, 2, or 3!");
-  if (mode == 3 && hybrid != 2)
-    throw TIVTCError("TDecimate:  mode 3 can only be used with hybrid = 2!");
-  if (mode == 5 && hybrid != 2)
-    throw TIVTCError("TDecimate:  mode 5 can only be used with hybrid = 2!");
-  if (mode == 6 && hybrid != 2)
-    throw TIVTCError("TDecimate:  mode 6 can only be used with hybrid = 2!");
-  if (hybrid == 3 && mode > 1)
-    throw TIVTCError("TDecimate:  hybrid = 3 can only be used with modes 0 and 1!");
-  if (hybrid == 1 && mode > 1)
-    throw TIVTCError("TDecimate:  hybrid = 1 can only be used with modes 0 and 1!");
-  if (hybrid > 0 && cycleR > 1)
-    throw TIVTCError("TDecimate:  hybrid processing is currently limited to cycleR=1 cases only!");
-  if (mode < 2 && hybrid > 1 && hybrid != 3)
-    throw TIVTCError("TDecimate:  only hybrid = 0, 1, or 3 is supported in modes 0 and 1!");
-  if (cycleR >= cycle || cycleR <= 0)
-    throw TIVTCError("TDecimate:  cycleR must be greater than 0 and less than cycle!");
-  if (cycle < 2 || cycle > vi.numFrames)
-    throw TIVTCError("TDecimate:  cycle must be at least 2 and less than or equal to the number of frames in the clip!");
-  if (sceneThresh < 0.0 || sceneThresh > 100.0)
-    throw TIVTCError("TDecimate:  sceneThresh must be in the range 0 to 100!");
-  if (rate >= fps && (mode == 2 || mode == 7))
-    throw TIVTCError("TDecimate:  mode 2 and 7 - new rate must be less than current rate!");
-  if (vidDetect < 0 || vidDetect > 4)
-    throw TIVTCError("TDecimate:  vidDetect must be set to 0, 1, 2, 3, or 4!");
-  if (conCycle > 2)
-    throw TIVTCError("TDecimate:  conCycle cannot be greater than 2!");
-  if (mode == 4 && (ovr.size() || tfmIn.size()))
-    throw TIVTCError("TDecimate:  cannot use an ovr or tfmIn file when in mode 4!");
-  if (vfrDec != 0 && vfrDec != 1)
-    throw TIVTCError("TDecimate:  vfrDec must be set to 0 or 1!");
-  if (output.size() && (mode == 5 || mode == 6))
-    throw TIVTCError("TDecimate:  output not supported in mode 5 and 6 (you should already have the metrics)!");
-  if (blockx != 4 && blockx != 8 && blockx != 16 && blockx != 32 && blockx != 64 &&
-    blockx != 128 && blockx != 256 && blockx != 512 && blockx != 1024 && blockx != 2048)
-    throw TIVTCError("TDecimate:  illegal blockx size!");
-  if (blocky != 4 && blocky != 8 && blocky != 16 && blocky != 32 && blocky != 64 &&
-    blocky != 128 && blocky != 256 && blocky != 512 && blocky != 1024 && blocky != 2048)
-    throw TIVTCError("TDecimate:  illegal blocky size!");
-  if (mode == 2 && maxndl != -200 && (maxndl < 1 || maxndl > 99))
-    throw TIVTCError("TDecimate:  maxndl must be set to a value between 1 and 99 inclusive!");
-  if ((mode != 0 && mode != 1 && mode != 3) || cycleR == 1)
-    sdlim = 0;
-  if ((abs(sdlim) + 1)*(cycleR - 1) >= cycle) {
-      char msg[160] = { 0 };
-    snprintf(msg, 160, "TDecimate:  invalid sdlim setting (%d through %d (inclusive) are allowed)!", 0, int(ceil(cycle / double(cycleR - 1))) - 2);
-    throw TIVTCError(msg);
-  }
-  if (opt < 0 || opt > 4)
-    throw TIVTCError("TDecimate:  opt must be set to 0, 1, 2, 3, or 4!");
-
-  vi_clip2 = vsapi->getVideoInfo(clip2);
-
-  if (vi.numFrames != vi_clip2->numFrames)
-    throw TIVTCError("TDecimate:  clip2 must have the same number of frames as the input clip!");
-  if (vi_clip2->format.colorFamily != cfYUV)
-    throw TIVTCError("TDecimate:  clip2 must be YUV colorspace!");
-  if (vi_clip2->format.bitsPerSample > 16)
-    throw TIVTCError("TDecimate:  clip2: only 8-16 bit formats supported!");
-
-  if (debug) logInfo(vsapi, vscore, "TDecimate:  %s by tritical", VERSION);
-
-  if (cycle > 5 && mode != 4 && mode != 6 && mode != 7)
-  {
-    prev.setSize(cycle);
-    curr.setSize(cycle);
-    next.setSize(cycle);
-    nbuf.setSize(cycle);
-  }
-  if (sdlim)
-  {
-    prev.sdlim = sdlim;
-    curr.sdlim = sdlim;
-    next.sdlim = sdlim;
-    nbuf.sdlim = sdlim;
-  }
-  // The AviSynth original sized the source cache here via SetCacheHints. VapourSynth's API 4
-  // core manages caches itself, so there is nothing to configure.
-
-  if (vidDetect == 4)
-  {
-    vidDetect = 3;
-    cve = true;
-  }
-  else cve = false;
-  lastn = -1;
-  fullInfo = false;
-  same_thresh = diff_thresh = 0;
-  linearCount = -342;
-  mode2_num = mode2_den = mode2_numCycles = -20;
-  memset(mode2_cfs, 0, 10 * sizeof(int));
-  nfrms = nfrmsN = vi.numFrames - 1;
-  prev.length = curr.length = next.length = nbuf.length = cycle;
-  prev.maxFrame = curr.maxFrame = next.maxFrame = nbuf.maxFrame = nfrms;
-  blockx_shift = blockx == 4 ? 2 : blockx == 8 ? 3 : blockx == 16 ? 4 : blockx == 32 ? 5 :
-    blockx == 64 ? 6 : blockx == 128 ? 7 : blockx == 256 ? 8 : blockx == 512 ? 9 :
-    blockx == 1024 ? 10 : 11;
-  blocky_shift = blocky == 4 ? 2 : blocky == 8 ? 3 : blocky == 16 ? 4 : blocky == 32 ? 5 :
-    blocky == 64 ? 6 : blocky == 128 ? 7 : blocky == 256 ? 8 : blocky == 512 ? 9 :
-    blocky == 1024 ? 10 : 11;
-  blocky_half = blocky >> 1;
-  blockx_half = blockx >> 1;
-
-  char error[512] = "TDecimate: Couldn't fetch the first frame from the input clip to read TFM's PP value. Reason: ";
-  size_t len = strlen(error);
-
-  const VSFrame *first_frame = vsapi->getFrame(0, child, error + len, (int)(512 - len));
-  if (first_frame == nullptr)
-      throw TIVTCError(error);
-
-  const VSMap *props = vsapi->getFramePropertiesRO(first_frame);
-
-  int err;
-  int64_t TFMPP = vsapi->mapGetInt(props, PROP_TFMPP, 0, &err);
-  vsapi->freeFrame(first_frame);
-  if (err)
-      useTFMPP = false;
-  else
-      useTFMPP = TFMPP > 1;
-
-  if (exPP) useTFMPP = true;
-
-
-    if (chroma)
-    {
-      const int blockx_chroma = blockx >> vi.format.subSamplingW;
-      const int blocky_chroma = blocky >> vi.format.subSamplingH;
-      if (ssd) 
-        MAX_DIFF = (uint64_t)(sqrt(219.0*219.0*blockx*blocky + 224.0*224.0* blockx_chroma * blocky_chroma *2.0));
-      else 
-        MAX_DIFF = (uint64_t)(219.0*blockx*blocky + 224.0*blockx_chroma*blocky_chroma*2.0);
-    }
-    else
-    {
-      if (ssd) 
-        MAX_DIFF = (uint64_t)(sqrt(219.0*219.0*blockx*blocky));
-      else
-        MAX_DIFF = (uint64_t)(219.0*blockx*blocky);
-    }
-    if (ssd)
-    {
-      sceneThreshU = (uint64_t)((sceneThresh*sqrt(219.0*219.0*vi.height*vi.width)) / 100.0);
-      sceneDivU = (uint64_t)(sqrt(219.0*219.0*vi.width*vi.height));
-    }
-    else
-    {
-      sceneThreshU = (uint64_t)((sceneThresh*219.0*vi.height*vi.width) / 100.0);
-      sceneDivU = (uint64_t)(219.0*vi.width*vi.height);
-    }
-
-
-  if (mode <= 5 || mode == 7)
-  {
-    diff.resize((size_t)(((vi.width + blockx_half) >> blockx_shift) + 1) * (((vi.height + blocky_half) >> blocky_shift) + 1) * 4);
-  }
   if (output.size())
   {
     if ((f = tivtc_fopen(output.c_str(), "w")) != nullptr)
@@ -3020,6 +2835,15 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
       metricsArray[h + 1] = 0;
     }
   }
+}
+
+// Parse the ovr= override file: per-frame drop/keep and film/video overrides.
+void TDecimate::parseOvrFile()
+{
+  char linein[1024];
+  char *linep, *linet;
+  FILE *f = nullptr;
+
   if (ovr.size())
   {
     if ((f = tivtc_fopen(ovr.c_str(), "r")) != nullptr)
@@ -3208,6 +3032,16 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
     }
     else throw TIVTCError("TDecimate:  ovr error (could not open ovr file)!");
   }
+}
+
+// Parse the tfmIn= file written by TFM's output=: per-frame match codes and combed flags,
+// which let TDecimate reuse TFM's decisions instead of recomputing them.
+void TDecimate::parseTfmInFile()
+{
+  char linein[1024];
+  char *linep, *linet;
+  FILE *f = nullptr;
+
   if (tfmIn.size())
   {
     bool d2vmarked, micmarked;
@@ -3350,6 +3184,13 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
   if (metricsFullInfo && (tfmFullInfo || !usehints)) fullInfo = true;
   else fullInfo = false;
 
+}
+
+// Per-mode setup: sizing the cycles, building the mode 2 decimation strategy, opening the
+// mode 3/5/6 timecode files and computing the output frame count and frame rate.
+void TDecimate::setupModeState()
+{
+  FILE *f = nullptr;
   if (mode < 2)
   {
     if (hybrid != 3)
@@ -3441,7 +3282,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
   }
   else if (mode == 5)
   {
-    init_mode_5(core);
+    init_mode_5(vscore);
     diff = {}; // mode 5 only needs the diff buffer during init; release it
   } // mode 5
   else if (mode == 6)
@@ -3640,6 +3481,219 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
     // rather than letting createVideoFilter reject the VSVideoInfo with a generic message.
     if (vi.numFrames < 1)
       throw TIVTCError("TDecimate:  the requested decimation leaves no output frames!");
+}
+
+TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double _rate,
+  double _dupThresh, double _vidThresh, double _sceneThresh, int _hybrid,
+  int _vidDetect, int _conCycle, int _conCycleTP, const char* _ovr,
+  const char* _output, const char* _input, const char* _tfmIn, const char* _mkvOut,
+  int _nt, int _blockx, int _blocky, bool _debug, bool _display, int _vfrDec,
+  bool _batch, bool _tcfv1, bool _se, bool _chroma, bool _exPP, int _maxndl, bool _m2PA,
+  bool _predenoise, bool _noblend, bool _ssd, bool _usehints, VSNode *_clip2,
+  int _sdlim, int _opt, const char* _orgOut, const VSAPI *_vsapi, VSCore *core)
+    : vsapi(_vsapi), child(_child),
+  mode(_mode),
+  cycleR(_cycleR), cycle(_cycle), rate(_rate), dupThresh(_dupThresh),
+  hybrid(_hybrid), vidThresh(_vidThresh),
+  conCycleTP(_conCycleTP), vidDetect(_vidDetect), sceneThresh(_sceneThresh),
+  conCycle(_conCycle), ovr(_ovr), input(_input),
+  nt(_nt), output(_output), mkvOut(_mkvOut), tfmIn(_tfmIn), blockx(_blockx), blocky(_blocky),
+  vfrDec(_vfrDec), debug(_debug), display(_display), vscore(core), batch(_batch), tcfv1(_tcfv1), se(_se),
+  maxndl(_maxndl), chroma(_chroma), m2PA(_m2PA), exPP(_exPP),
+  noblend(_noblend), predenoise(_predenoise), ssd(_ssd), sdlim(_sdlim),
+  opt(_opt), clip2(_clip2), orgOut(_orgOut),
+  prev(5, 0), curr(5, 0), next(5, 0), nbuf(5, 0), usehints(_usehints)
+{
+    vi_child = vsapi->getVideoInfo(child);
+    vi = *vi_child;
+
+  mkvOutF = nullptr;
+
+  if (vi.fpsDen == 0 && (mode == 2 || mode == 3 || mode == 5 || mode == 7))
+    throw TIVTCError("TDecimate:  modes 2, 3, 5 and 7 require a clip with a known constant frame rate (fpsDen != 0)!");
+  fps = (double)vi.fpsNum / (double)vi.fpsDen;
+
+
+  if (!vsh::isConstantVideoFormat(&vi))
+      throw TIVTCError("TDecimate: the clip must have constant format and dimensions.");
+
+  if (vi.format.bitsPerSample > 16)
+    throw TIVTCError("TDecimate:  only 8-16 bit formats supported!");
+  if (vi.format.colorFamily != cfYUV)
+    throw TIVTCError("TDecimate:  YUV colorspaces only!");
+  if (vi.format.subSamplingW > 1 || vi.format.subSamplingH > 1 ||
+    vi.format.subSamplingH > vi.format.subSamplingW)
+    throw TIVTCError("TDecimate:  only 4:4:4, 4:2:2 and 4:2:0 subsampling is supported!");
+  if (mode < 0 || mode > 7)
+    throw TIVTCError("TDecimate:  mode must be set to 0, 1, 2, 3, 4, 5, 6, or 7!");
+  if (mode == 3 && mkvOut.empty())
+    throw TIVTCError("TDecimate:  an mkvOut file must be specified in mode 3!");
+  if (mode == 5 && mkvOut.empty())
+    throw TIVTCError("TDecimate:  an mkvOut file must be specified in mode 5!");
+  if (mode == 6 && mkvOut.empty())
+    throw TIVTCError("TDecimate:  an mkvOut file must be specified in mode 6!");
+  if (mode == 6 && input.empty())
+    throw TIVTCError("TDecimate:  mode 6 requires an input file containing precalculated metrics!");
+  if (hybrid < 0 || hybrid > 3)
+    throw TIVTCError("TDecimate:  hybrid must be set to 0, 1, 2, or 3!");
+  if (mode == 3 && hybrid != 2)
+    throw TIVTCError("TDecimate:  mode 3 can only be used with hybrid = 2!");
+  if (mode == 5 && hybrid != 2)
+    throw TIVTCError("TDecimate:  mode 5 can only be used with hybrid = 2!");
+  if (mode == 6 && hybrid != 2)
+    throw TIVTCError("TDecimate:  mode 6 can only be used with hybrid = 2!");
+  if (hybrid == 3 && mode > 1)
+    throw TIVTCError("TDecimate:  hybrid = 3 can only be used with modes 0 and 1!");
+  if (hybrid == 1 && mode > 1)
+    throw TIVTCError("TDecimate:  hybrid = 1 can only be used with modes 0 and 1!");
+  if (hybrid > 0 && cycleR > 1)
+    throw TIVTCError("TDecimate:  hybrid processing is currently limited to cycleR=1 cases only!");
+  if (mode < 2 && hybrid > 1 && hybrid != 3)
+    throw TIVTCError("TDecimate:  only hybrid = 0, 1, or 3 is supported in modes 0 and 1!");
+  if (cycleR >= cycle || cycleR <= 0)
+    throw TIVTCError("TDecimate:  cycleR must be greater than 0 and less than cycle!");
+  if (cycle < 2 || cycle > vi.numFrames)
+    throw TIVTCError("TDecimate:  cycle must be at least 2 and less than or equal to the number of frames in the clip!");
+  if (sceneThresh < 0.0 || sceneThresh > 100.0)
+    throw TIVTCError("TDecimate:  sceneThresh must be in the range 0 to 100!");
+  if (rate >= fps && (mode == 2 || mode == 7))
+    throw TIVTCError("TDecimate:  mode 2 and 7 - new rate must be less than current rate!");
+  if (vidDetect < 0 || vidDetect > 4)
+    throw TIVTCError("TDecimate:  vidDetect must be set to 0, 1, 2, 3, or 4!");
+  if (conCycle > 2)
+    throw TIVTCError("TDecimate:  conCycle cannot be greater than 2!");
+  if (mode == 4 && (ovr.size() || tfmIn.size()))
+    throw TIVTCError("TDecimate:  cannot use an ovr or tfmIn file when in mode 4!");
+  if (vfrDec != 0 && vfrDec != 1)
+    throw TIVTCError("TDecimate:  vfrDec must be set to 0 or 1!");
+  if (output.size() && (mode == 5 || mode == 6))
+    throw TIVTCError("TDecimate:  output not supported in mode 5 and 6 (you should already have the metrics)!");
+  if (blockx != 4 && blockx != 8 && blockx != 16 && blockx != 32 && blockx != 64 &&
+    blockx != 128 && blockx != 256 && blockx != 512 && blockx != 1024 && blockx != 2048)
+    throw TIVTCError("TDecimate:  illegal blockx size!");
+  if (blocky != 4 && blocky != 8 && blocky != 16 && blocky != 32 && blocky != 64 &&
+    blocky != 128 && blocky != 256 && blocky != 512 && blocky != 1024 && blocky != 2048)
+    throw TIVTCError("TDecimate:  illegal blocky size!");
+  if (mode == 2 && maxndl != -200 && (maxndl < 1 || maxndl > 99))
+    throw TIVTCError("TDecimate:  maxndl must be set to a value between 1 and 99 inclusive!");
+  if ((mode != 0 && mode != 1 && mode != 3) || cycleR == 1)
+    sdlim = 0;
+  if ((abs(sdlim) + 1)*(cycleR - 1) >= cycle) {
+      char msg[160] = { 0 };
+    snprintf(msg, 160, "TDecimate:  invalid sdlim setting (%d through %d (inclusive) are allowed)!", 0, int(ceil(cycle / double(cycleR - 1))) - 2);
+    throw TIVTCError(msg);
+  }
+  if (opt < 0 || opt > 4)
+    throw TIVTCError("TDecimate:  opt must be set to 0, 1, 2, 3, or 4!");
+
+  vi_clip2 = vsapi->getVideoInfo(clip2);
+
+  if (vi.numFrames != vi_clip2->numFrames)
+    throw TIVTCError("TDecimate:  clip2 must have the same number of frames as the input clip!");
+  if (vi_clip2->format.colorFamily != cfYUV)
+    throw TIVTCError("TDecimate:  clip2 must be YUV colorspace!");
+  if (vi_clip2->format.bitsPerSample > 16)
+    throw TIVTCError("TDecimate:  clip2: only 8-16 bit formats supported!");
+
+  if (debug) logInfo(vsapi, vscore, "TDecimate:  %s by tritical", VERSION);
+
+  if (cycle > 5 && mode != 4 && mode != 6 && mode != 7)
+  {
+    prev.setSize(cycle);
+    curr.setSize(cycle);
+    next.setSize(cycle);
+    nbuf.setSize(cycle);
+  }
+  if (sdlim)
+  {
+    prev.sdlim = sdlim;
+    curr.sdlim = sdlim;
+    next.sdlim = sdlim;
+    nbuf.sdlim = sdlim;
+  }
+  // The AviSynth original sized the source cache here via SetCacheHints. VapourSynth's API 4
+  // core manages caches itself, so there is nothing to configure.
+
+  if (vidDetect == 4)
+  {
+    vidDetect = 3;
+    cve = true;
+  }
+  else cve = false;
+  lastn = -1;
+  fullInfo = false;
+  same_thresh = diff_thresh = 0;
+  linearCount = -342;
+  mode2_num = mode2_den = mode2_numCycles = -20;
+  memset(mode2_cfs, 0, 10 * sizeof(int));
+  nfrms = nfrmsN = vi.numFrames - 1;
+  prev.length = curr.length = next.length = nbuf.length = cycle;
+  prev.maxFrame = curr.maxFrame = next.maxFrame = nbuf.maxFrame = nfrms;
+  blockx_shift = blockx == 4 ? 2 : blockx == 8 ? 3 : blockx == 16 ? 4 : blockx == 32 ? 5 :
+    blockx == 64 ? 6 : blockx == 128 ? 7 : blockx == 256 ? 8 : blockx == 512 ? 9 :
+    blockx == 1024 ? 10 : 11;
+  blocky_shift = blocky == 4 ? 2 : blocky == 8 ? 3 : blocky == 16 ? 4 : blocky == 32 ? 5 :
+    blocky == 64 ? 6 : blocky == 128 ? 7 : blocky == 256 ? 8 : blocky == 512 ? 9 :
+    blocky == 1024 ? 10 : 11;
+  blocky_half = blocky >> 1;
+  blockx_half = blockx >> 1;
+
+  char error[512] = "TDecimate: Couldn't fetch the first frame from the input clip to read TFM's PP value. Reason: ";
+  size_t len = strlen(error);
+
+  const VSFrame *first_frame = vsapi->getFrame(0, child, error + len, (int)(512 - len));
+  if (first_frame == nullptr)
+      throw TIVTCError(error);
+
+  const VSMap *props = vsapi->getFramePropertiesRO(first_frame);
+
+  int err;
+  int64_t TFMPP = vsapi->mapGetInt(props, PROP_TFMPP, 0, &err);
+  vsapi->freeFrame(first_frame);
+  if (err)
+      useTFMPP = false;
+  else
+      useTFMPP = TFMPP > 1;
+
+  if (exPP) useTFMPP = true;
+
+
+    if (chroma)
+    {
+      const int blockx_chroma = blockx >> vi.format.subSamplingW;
+      const int blocky_chroma = blocky >> vi.format.subSamplingH;
+      if (ssd) 
+        MAX_DIFF = (uint64_t)(sqrt(219.0*219.0*blockx*blocky + 224.0*224.0* blockx_chroma * blocky_chroma *2.0));
+      else 
+        MAX_DIFF = (uint64_t)(219.0*blockx*blocky + 224.0*blockx_chroma*blocky_chroma*2.0);
+    }
+    else
+    {
+      if (ssd) 
+        MAX_DIFF = (uint64_t)(sqrt(219.0*219.0*blockx*blocky));
+      else
+        MAX_DIFF = (uint64_t)(219.0*blockx*blocky);
+    }
+    if (ssd)
+    {
+      sceneThreshU = (uint64_t)((sceneThresh*sqrt(219.0*219.0*vi.height*vi.width)) / 100.0);
+      sceneDivU = (uint64_t)(sqrt(219.0*219.0*vi.width*vi.height));
+    }
+    else
+    {
+      sceneThreshU = (uint64_t)((sceneThresh*219.0*vi.height*vi.width) / 100.0);
+      sceneDivU = (uint64_t)(219.0*vi.width*vi.height);
+    }
+
+
+  if (mode <= 5 || mode == 7)
+  {
+    diff.resize((size_t)(((vi.width + blockx_half) >> blockx_shift) + 1) * (((vi.height + blocky_half) >> blocky_shift) + 1) * 4);
+  }
+  parseMetricsFiles();
+  parseOvrFile();
+  parseTfmInFile();
+  setupModeState();
 }
 
 TDecimate::~TDecimate()
