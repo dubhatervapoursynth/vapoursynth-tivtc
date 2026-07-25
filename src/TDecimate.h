@@ -119,7 +119,6 @@ private:
   bool predenoise;
   bool ssd; // sum of squared distances (false = SAD)
   int sdlim;
-  int opt;
   VSNode *clip2;
   std::string orgOut;
   Cycle prev, curr, next, nbuf;
@@ -238,7 +237,7 @@ public:
     int _nt, int _blockx, int _blocky, bool _debug, bool _display, int _vfrDec,
     bool _batch, bool _tcfv1, bool _se, bool _chroma, bool _exPP, int _maxndl,
     bool _m2PA, bool _predenoise, bool _noblend, bool _ssd, bool _usehints,
-    VSNode *_clip2, int _sdlim, int _opt, const char* _orgOut, const VSAPI *_vsapi, VSCore *core);
+    VSNode *_clip2, int _sdlim, const char* _orgOut, const VSAPI *_vsapi, VSCore *core);
   ~TDecimate();
 
 };

@@ -5,18 +5,9 @@ decimation filter; used together they perform an inverse telecine (IVTC), and ei
 its own.
 
 **Notes**
-* Native VapourSynth API 4 plugin. Namespace `tivtc`, identifier `com.nodame.tivtc`.
 * Supports 8-16 bit integer planar YUV in 4:2:0, 4:2:2 and 4:4:4. Width and height must be even,
-  and each plane needs at least 8 lines.
-* All processing is plain C++. The original hand-written MMX/SSE2 paths and the YUY2 code have been
-  removed; the `opt` parameter is accepted for script compatibility but does nothing.
-* Communication between TFM and TDecimate uses frame properties, not the pixel-embedded hints the
-  AviSynth version used.
-* `debug=True` writes to the VapourSynth log (`mtInformation`), so it appears wherever your
-  frontend surfaces log messages.
-
-**Note on `std.Cache`:** none is inserted. API 4 adds and sizes caches automatically, so the
-explicit `std.Cache` call the API 3 version made is neither needed nor allowed.
+  and each plane needs to have at least 8 lines.
+* `debug=True` writes to the VapourSynth log at information level.
 
 ## Table of Contents
 * [Installation](#installation)
@@ -78,7 +69,7 @@ core.tivtc.TFM(clip clip[, int order = -1, int field = -1, int mode = 1, int PP 
                int y0 = 0, int y1 = 0, int mthresh = 5, clip clip2 = None, string d2v = "",
                int ovrDefault = 0, int flags = 4, float scthresh = 12.0, int micout = 0,
                int micmatching = 1, string trimIn = "", int hint = 1, int metric = 0,
-               int batch = 0, int ubsco = 1, int mmsco = 1, int opt = 4])
+               int batch = 0, int ubsco = 1, int mmsco = 1])
 ```
 
 | Parameter | Type | Options (Default) | Description |
@@ -117,7 +108,6 @@ core.tivtc.TFM(clip clip[, int order = -1, int field = -1, int mode = 1, int PP 
 | batch | int | 0, 1 (0) | Skip the CRC check that ties an `input` file to the clip it was made from. |
 | display | int | 0, 1 (0) | Overlay the match, mode, field, order, mics and combed status on each frame. |
 | debug | int | 0, 1 (0) | Log the same information to the VapourSynth log instead of drawing it. |
-| opt | int | 0-4 (4) | Accepted and ignored. There are no SIMD paths left to select. |
 
 #### TFM match codes
 
@@ -177,7 +167,7 @@ core.tivtc.TDecimate(clip clip[, int mode = 0, int cycleR = 1, int cycle = 5,
                      int vfrDec = 1, int batch = 0, int tcfv1 = 1, int se = 0,
                      int chroma = 1, int exPP = 0, int maxndl = -200, int m2PA = 0,
                      int denoise = 0, int noblend = 1, int ssd = 0, int hint = 1,
-                     clip clip2 = None, int sdlim = 0, int opt = 4, string orgOut = ""])
+                     clip clip2 = None, int sdlim = 0, string orgOut = ""])
 ```
 
 | Parameter | Type | Options (Default) | Description |
@@ -219,7 +209,6 @@ core.tivtc.TDecimate(clip clip[, int mode = 0, int cycleR = 1, int cycle = 5,
 | batch | int | 0, 1 (0) | Skip file consistency checks. |
 | display | int | 0, 1 (0) | Overlay the cycle metrics and the decimation decision on each frame. |
 | debug | int | 0, 1 (0) | Log the same information to the VapourSynth log. |
-| opt | int | 0-4 (4) | Accepted and ignored. |
 
 #### TDecimate modes
 
@@ -302,5 +291,3 @@ This is a port, and it would not exist without the work behind it.
 * pinterf's maintained AviSynth fork, and the documentation this README draws on:
   https://github.com/pinterf/TIVTC
 * Filter descriptions on the AviSynth wiki: http://avisynth.nl/index.php/TIVTC
-* dubhater's VapourSynth port, which this repository continues:
-  https://github.com/dubhater/vapoursynth-tivtc

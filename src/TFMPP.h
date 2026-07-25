@@ -58,7 +58,6 @@ private:
   std::string ovr;
   bool display;
   VSNode *clip2;
-  int opt;
   bool uC2; // use clip2
   int PP_origSaved;
   int mthresh_origSaved;
@@ -110,6 +109,6 @@ public:
   void parseOvrFile();
   const VSFrame *GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
   TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _display, VSNode *_clip2,
-    bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core);
+    bool _usehints, const VSAPI *_vsapi, VSCore *core);
   ~TFMPP();
 };

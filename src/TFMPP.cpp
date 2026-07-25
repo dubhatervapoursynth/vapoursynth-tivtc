@@ -1138,10 +1138,9 @@ void TFMPP::parseOvrFile()
 }
 
 TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _display,
-  VSNode *_clip2, [[maybe_unused]] bool _usehints, int _opt, const VSAPI *_vsapi, VSCore *core)
+  VSNode *_clip2, [[maybe_unused]] bool _usehints, const VSAPI *_vsapi, VSCore *core)
     : vsapi(_vsapi), child(_child),
-  PP(_PP), mthresh(_mthresh), ovr(_ovr), display(_display), clip2(_clip2),
-  opt(_opt)
+  PP(_PP), mthresh(_mthresh), ovr(_ovr), display(_display), clip2(_clip2)
 {
     vi = vsapi->getVideoInfo(child);
 
@@ -1159,8 +1158,6 @@ TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _disp
     throw TIVTCError("TFMPP:  height and width must be divisible by 2!");
   if (PP < 2 || PP > 7)
     throw TIVTCError("TFMPP:  PP must be set to 2, 3, 4, 5, 6, or 7!");
-  if (opt < 0 || opt > 4)
-    throw TIVTCError("TFMPP:  opt must be set to 0, 1, 2, 3, or 4!");
   if (clip2)
   {
     uC2 = true;

@@ -97,7 +97,6 @@ private:
   bool usehints;
   bool metric;
   bool batch, ubsco, mmsco;
-  int opt;
 
   int PP_origSaved, MI_origSaved;
   int order_origSaved, field_origSaved, mode_origSaved;
@@ -276,7 +275,7 @@ public:
     bool _mChroma, int _cNum, int _cthresh, int _MI, bool _chroma, int _blockx, int _blocky,
     int _y0, int _y1, const char* _d2v, int _ovrDefault, int _flags, double _scthresh, int _micout,
     int _micmatching, const char* _trimIn, bool _usehints, int _metric, bool _batch, bool _ubsco,
-    bool _mmsco, int _opt, const VSAPI *_vsapi, VSCore *core);
+    bool _mmsco, const VSAPI *_vsapi, VSCore *core);
   ~TFM();
 
 };

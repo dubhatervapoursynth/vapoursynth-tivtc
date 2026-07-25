@@ -218,7 +218,6 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, [[maybe_unused]] void *
 
     const bool mmsco = optBool(in, "mmsco", true, vsapi);
 
-    const int opt = optInt(in, "opt", 4, vsapi);
 
 
     VSNode *clip = vsapi->mapGetNode(in, "clip", 0, nullptr);
@@ -228,7 +227,7 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, [[maybe_unused]] void *
     try {
         tfm_data = new TFM(clip, order, field, mode, PP, ovr, input, output, outputC, debug, display, slow, mChroma, cNum, cthresh,
                        MI, chroma, blockx, blocky, y0, y1, d2v, ovrDefault, flags, scthresh, micout, micmatching, trimIn, hint,
-                       metric, batch, ubsco, mmsco, opt, vsapi, core);
+                       metric, batch, ubsco, mmsco, vsapi, core);
     } catch (const TIVTCError& e) {
         vsapi->mapSetError(out, e.what());
 
@@ -265,7 +264,7 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, [[maybe_unused]] void *
         TFMPP *tfmpp_data;
 
         try {
-            tfmpp_data = new TFMPP(tfm_node, PP, mthresh, ovr, display, clip2, hint, opt, vsapi, core);
+            tfmpp_data = new TFMPP(tfm_node, PP, mthresh, ovr, display, clip2, hint, vsapi, core);
         } catch (const TIVTCError& e) {
             vsapi->mapSetError(out, e.what());
 
@@ -422,7 +421,6 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, [[maybe_unused]] 
 
     const int sdlim = optInt(in, "sdlim", 0, vsapi);
 
-    const int opt = optInt(in, "opt", 4, vsapi);
 
     const char *orgOut = optData(in, "orgOut", "", vsapi);
 
@@ -430,7 +428,7 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, [[maybe_unused]] 
     TDecimate *tdecimate_data;
 
     try {
-        tdecimate_data = new TDecimate(clip, mode, cycleR, cycle, rate, dupThresh, vidThresh, sceneThresh, hybrid, vidDetect, conCycle, conCycleTP, ovr, output, input, tfmIn, mkvOut, nt, blockx, blocky, debug, display, vfrDec, batch, tcfv1, se, chroma, exPP, maxndl, m2PA, denoise, noblend, ssd, hint, clip2, sdlim, opt, orgOut, vsapi, core);
+        tdecimate_data = new TDecimate(clip, mode, cycleR, cycle, rate, dupThresh, vidThresh, sceneThresh, hybrid, vidDetect, conCycle, conCycleTP, ovr, output, input, tfmIn, mkvOut, nt, blockx, blocky, debug, display, vfrDec, batch, tcfv1, se, chroma, exPP, maxndl, m2PA, denoise, noblend, ssd, hint, clip2, sdlim, orgOut, vsapi, core);
     } catch (const TIVTCError& e) {
         vsapi->mapSetError(out, e.what());
 
@@ -534,7 +532,6 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI
                  "batch:int:opt;"
                  "ubsco:int:opt;"
                  "mmsco:int:opt;"
-                 "opt:int:opt;"
                  , "clip:vnode;", tfmCreate, nullptr, plugin);
 
     vspapi->registerFunction("TDecimate",
@@ -574,7 +571,6 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI
                  "hint:int:opt;"
                  "clip2:vnode:opt;"
                  "sdlim:int:opt;"
-                 "opt:int:opt;"
                  "orgOut:data:opt;"
                  , "clip:vnode;", tdecimateCreate, nullptr, plugin);
 }

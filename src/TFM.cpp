@@ -1810,8 +1810,6 @@ void TFM::validateParameters()
   // Only 1, 2 and 3 are implemented; 4 used to be accepted but silently did nothing.
   if (micmatching < 0 || micmatching > 3)
     throw TIVTCError("TFM:  micmatching must be set to 0, 1, 2, or 3!");
-  if (opt < 0 || opt > 4)
-    throw TIVTCError("TFM:  opt must be set to 0, 1, 2, 3, or 4!");
   if (metric != 0 && metric != 1)
     throw TIVTCError("TFM:  metric must be set to 0 or 1!");
   if (scthresh < 0.0 || scthresh > 100.0)
@@ -2387,14 +2385,14 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
   int _slow, bool _mChroma, int _cNum, int _cthresh, int _MI, bool _chroma, int _blockx,
   int _blocky, int _y0, int _y1, const char* _d2v, int _ovrDefault, int _flags, double _scthresh,
   int _micout, int _micmatching, const char* _trimIn, bool _usehints, int _metric, bool _batch,
-  bool _ubsco, bool _mmsco, int _opt, const VSAPI *_vsapi, VSCore *core)
+  bool _ubsco, bool _mmsco, const VSAPI *_vsapi, VSCore *core)
     : vsapi(_vsapi), child(_child),
   order(_order), field(_field), mode(_mode), PP(_PP), ovr(_ovr), input(_input), output(_output),
   outputC(_outputC), debug(_debug), display(_display), vscore(core), slow(_slow), mChroma(_mChroma), cNum(_cNum),
   cthresh(_cthresh), MI(_MI), chroma(_chroma), blockx(_blockx), blocky(_blocky), y0(_y0),
   y1(_y1), d2v(_d2v), ovrDefault(_ovrDefault), flags(_flags), scthresh(_scthresh), micout(_micout),
   micmatching(_micmatching), trimIn(_trimIn), usehints(_usehints), metric(_metric),
-  batch(_batch), ubsco(_ubsco), mmsco(_mmsco), opt(_opt),
+  batch(_batch), ubsco(_ubsco), mmsco(_mmsco),
   map(nullptr, nullptr), cmask(nullptr, nullptr)
 {
     vi = vsapi->getVideoInfo(child);
