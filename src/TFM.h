@@ -107,7 +107,7 @@ private:
   // lastMatch still have to check that it really holds frame n-1.
   bool linearAccess;
   
-  std::unique_ptr<int, decltype (&vsh::vsh_aligned_free)> cArray; // modified in GetFrame
+  std::vector<int> cArray; // combing block counters // modified in GetFrame
   std::vector<int> setArray;
 
   std::vector<bool> trimArray;
@@ -118,7 +118,7 @@ private:
   std::vector<uint8_t> outArray; // modified in GetFrame, but only the element corresponding to frame n, so multithreaded access is fine
   std::vector<uint8_t> d2vfilmarray;
 
-  std::unique_ptr<uint8_t, decltype (&vsh::vsh_aligned_free)> tbuffer; // absdiff buffer // modified in GetFrame
+  std::vector<uint8_t> tbuffer; // absdiff scratch buffer // modified in GetFrame
   ptrdiff_t tpitchy, tpitchuv;
 
   std::vector<int> moutArray; // modified in GetFrame, but only the element corresponding to frame n
@@ -208,8 +208,9 @@ private:
   // O.K. common parts with TDeint
   // fixme: hbd!
   template<typename pixel_t>
+  // Not const: writes into the shared tbuffer scratch.
   void buildABSDiffMask(const uint8_t *prvp, const uint8_t *nxtp,
-    ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height) const;
+    ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height);
 
   void generateOvrHelpOutput(FILE *f) const;
 

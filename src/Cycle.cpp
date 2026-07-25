@@ -67,8 +67,8 @@ void Cycle::setDecimateLow(int num)
   int asd = abs(sdlim);
   if (sdlim < 0)
   {
-    memcpy(dect, decimate, cycleSize * sizeof(int));
-    memcpy(dect2, decimate2, cycleSize * sizeof(int));
+    dect = decimate;
+    dect2 = decimate2;
   }
   int v = 0;
 mrestart:
@@ -105,8 +105,8 @@ mrestart:
       if (sdlim < 0)
       {
         --asd;
-        memcpy(decimate, dect, cycleSize * sizeof(int));
-        memcpy(decimate2, dect2, cycleSize * sizeof(int));
+        decimate = dect;
+        decimate2 = dect2;
         v = 0;
       }
       else asd = 0;
@@ -129,8 +129,8 @@ void Cycle::setDecimateLowP(int num)
   int asd = abs(sdlim);
   if (sdlim < 0)
   {
-    memcpy(dect, decimate, cycleSize * sizeof(int));
-    memcpy(dect2, decimate2, cycleSize * sizeof(int));
+    dect = decimate;
+    dect2 = decimate2;
   }
   int v = 0;
 mrestart:
@@ -167,8 +167,8 @@ mrestart:
       if (sdlim < 0)
       {
         --asd;
-        memcpy(decimate, dect, cycleSize * sizeof(int));
-        memcpy(decimate2, dect2, cycleSize * sizeof(int));
+        decimate = dect;
+        decimate2 = dect2;
         v = 0;
       }
       else asd = 0;
@@ -408,84 +408,35 @@ Cycle::Cycle(int _size, int _sdlim)
   length = frame = frameE = cycleS = cycleE = offE = -20;
   frameSO = frameEO = maxFrame = dupCount = blend = -20;
   type = -1;
-  dupArray = lowest = match = decimate = decimate2 = filmd2v = nullptr;
-  dect = dect2 = nullptr;
-  diffMetricsU = diffMetricsUF = tArray = nullptr;
-  diffMetricsN = nullptr;
   cycleSize = std::max(0, _size);
   sdlim = _sdlim;
-  if (!allocSpace())
-    throw TIVTCError("TIVTC-Cycle:  malloc failure!");
-  for (int x = 0; x < cycleSize; ++x)
-  {
-    dupArray[x] = lowest[x] = decimate[x] = match[x] = decimate2[x] = filmd2v[x] = -20;
-    diffMetricsU[x] = diffMetricsUF[x] = tArray[x] = UINT64_MAX;
-    diffMetricsN[x] = -20.0;
-  }
+  allocSpace();
 }
 
-Cycle::~Cycle()
+// Sizes every array to cycleSize and fills it with the "not set" sentinel.
+void Cycle::allocSpace()
 {
-  freeSpace();
-}
-
-void Cycle::freeSpace()
-{
-  if (dupArray != nullptr) { free(dupArray); dupArray = nullptr; }
-  if (lowest != nullptr) { free(lowest); lowest = nullptr; }
-  if (match != nullptr) { free(match); match = nullptr; }
-  if (filmd2v != nullptr) { free(filmd2v); filmd2v = nullptr; }
-  if (decimate != nullptr) { free(decimate); decimate = nullptr; }
-  if (decimate2 != nullptr) { free(decimate2); decimate2 = nullptr; }
-  if (dect != nullptr) { free(dect); dect = nullptr; }
-  if (dect2 != nullptr) { free(dect2); dect2 = nullptr; }
-  if (diffMetricsU != nullptr) { free(diffMetricsU); diffMetricsU = nullptr; }
-  if (diffMetricsUF != nullptr) { free(diffMetricsUF); diffMetricsUF = nullptr; }
-  if (tArray != nullptr) { free(tArray); tArray = nullptr; }
-  if (diffMetricsN != nullptr) { free(diffMetricsN); diffMetricsN = nullptr; }
-}
-
-bool Cycle::allocSpace()
-{
-  freeSpace();
-  dupArray = (int *)malloc(cycleSize * sizeof(int));
-  lowest = (int *)malloc(cycleSize * sizeof(int));
-  match = (int *)malloc(cycleSize * sizeof(int));
-  filmd2v = (int *)malloc(cycleSize * sizeof(int));
-  decimate = (int *)malloc(cycleSize * sizeof(int));
-  decimate2 = (int *)malloc(cycleSize * sizeof(int));
-  dect = (int *)malloc(cycleSize * sizeof(int));
-  dect2 = (int *)malloc(cycleSize * sizeof(int));
-  diffMetricsU = (uint64_t *)malloc(cycleSize * sizeof(uint64_t));
-  diffMetricsUF = (uint64_t *)malloc(cycleSize * sizeof(uint64_t));
-  tArray = (uint64_t *)malloc(cycleSize * sizeof(uint64_t));
-  diffMetricsN = (double *)malloc(cycleSize * sizeof(double));
-  if (cycleSize > 0 &&
-    (dupArray == nullptr || lowest == nullptr || match == nullptr || filmd2v == nullptr ||
-    decimate == nullptr || decimate2 == nullptr || diffMetricsU == nullptr ||
-    diffMetricsUF == nullptr || diffMetricsN == nullptr || tArray == nullptr ||
-    dect == nullptr || dect2 == nullptr))
-  {
-    freeSpace(); // don't leave a half-allocated object behind
-    return false;
-  }
-  return true;
+  dupArray.assign(cycleSize, -20);
+  lowest.assign(cycleSize, -20);
+  match.assign(cycleSize, -20);
+  filmd2v.assign(cycleSize, -20);
+  decimate.assign(cycleSize, -20);
+  decimate2.assign(cycleSize, -20);
+  dect.assign(cycleSize, -20);
+  dect2.assign(cycleSize, -20);
+  diffMetricsU.assign(cycleSize, UINT64_MAX);
+  diffMetricsUF.assign(cycleSize, UINT64_MAX);
+  tArray.assign(cycleSize, UINT64_MAX);
+  diffMetricsN.assign(cycleSize, -20.0);
 }
 
 void Cycle::setSize(int _size)
 {
   cycleSize = std::max(0, _size);
-  if (!allocSpace())
-    throw TIVTCError("TIVTC-Cycle:  malloc failure!");
-  for (int x = 0; x < cycleSize; ++x)
-  {
-    dupArray[x] = lowest[x] = decimate[x] = match[x] = decimate2[x] = filmd2v[x] = -20;
-    diffMetricsU[x] = diffMetricsUF[x] = tArray[x] = UINT64_MAX;
-    diffMetricsN[x] = -20.0;
-  }
+  allocSpace();
 }
 
-Cycle& Cycle::operator=(Cycle& ob2)
+Cycle& Cycle::operator=(const Cycle& ob2)
 {
   if (this == &ob2) return *this;
   length = ob2.length;
@@ -505,18 +456,21 @@ Cycle& Cycle::operator=(Cycle& ob2)
   dupCount = ob2.dupCount;
   blend = ob2.blend;
   isfilmd2v = ob2.isfilmd2v;
-  // Copy only what both sides can hold, but keep our own capacity: overwriting cycleSize with
-  // the smaller of the two permanently shrank this object even though its buffers stayed big.
-  const int n = std::min(cycleSize, ob2.cycleSize);
-  if (length > n) length = n;
-  memcpy(dupArray, ob2.dupArray, n * sizeof(int));
-  memcpy(lowest, ob2.lowest, n * sizeof(int));
-  memcpy(match, ob2.match, n * sizeof(int));
-  memcpy(filmd2v, ob2.filmd2v, n * sizeof(int));
-  memcpy(decimate, ob2.decimate, n * sizeof(int));
-  memcpy(decimate2, ob2.decimate2, n * sizeof(int));
-  memcpy(diffMetricsU, ob2.diffMetricsU, n * sizeof(uint64_t));
-  memcpy(diffMetricsUF, ob2.diffMetricsUF, n * sizeof(uint64_t));
-  memcpy(diffMetricsN, ob2.diffMetricsN, n * sizeof(double));
+  // Adopt the source's size along with its data; tArray/dect/dect2 are scratch that every user
+  // rewrites before reading, so they only have to keep matching cycleSize.
+  cycleSize = ob2.cycleSize;
+  if (length > cycleSize) length = cycleSize;
+  dupArray = ob2.dupArray;
+  lowest = ob2.lowest;
+  match = ob2.match;
+  filmd2v = ob2.filmd2v;
+  decimate = ob2.decimate;
+  decimate2 = ob2.decimate2;
+  diffMetricsU = ob2.diffMetricsU;
+  diffMetricsUF = ob2.diffMetricsUF;
+  diffMetricsN = ob2.diffMetricsN;
+  tArray.resize(cycleSize);
+  dect.resize(cycleSize);
+  dect2.resize(cycleSize);
   return *this;
 }

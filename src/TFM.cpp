@@ -651,14 +651,13 @@ void TFM::writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
     else if (combed == 5) snprintf(buf, SZ, "PP = %d  COMBED FRAME  (forced!) ", PP);
     else if (combed == 0) snprintf(buf, SZ, "PP = %d  CLEAN FRAME ", PP);
     else snprintf(buf, SZ, "PP = %d  COMBED FRAME ", PP);
+    text += buf;
     if (mics[fmatch] >= 0)
     {
-      char buft[20];
-      snprintf(buft, 20, " MIC = %d ", mics[fmatch]);
-      strcat(buf, buft);
+      text += " MIC = ";
+      text += std::to_string(mics[fmatch]);
+      text += ' ';
     }
-
-    text += buf;
     text += "\n";
   }
 
@@ -1978,16 +1977,16 @@ template void TFM::buildDiffMapPlane2<uint16_t>(const uint8_t* prvp, const uint8
 
 template<typename pixel_t>
 void TFM::buildABSDiffMask(const uint8_t *prvp, const uint8_t *nxtp,
-  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height) const
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height)
 {
-  do_buildABSDiffMask<pixel_t>(prvp, nxtp, tbuffer.get(), prv_pitch, nxt_pitch, tpitch, width, height);
+  do_buildABSDiffMask<pixel_t>(prvp, nxtp, tbuffer.data(), prv_pitch, nxt_pitch, tpitch, width, height);
 }
 
 // instantiate
 template void TFM::buildABSDiffMask<uint8_t>(const uint8_t* prvp, const uint8_t* nxtp,
-  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height) const;
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height);
 template void TFM::buildABSDiffMask<uint16_t>(const uint8_t* prvp, const uint8_t* nxtp,
-  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height) const;
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height);
 
 
 //AVSValue __cdecl Create_TFM(AVSValue args, void* user_data, IScriptEnvironment* env)
@@ -2030,7 +2029,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
   cthresh(_cthresh), MI(_MI), chroma(_chroma), blockx(_blockx), blocky(_blocky), y0(_y0),
   y1(_y1), d2v(_d2v), ovrDefault(_ovrDefault), flags(_flags), scthresh(_scthresh), micout(_micout),
   micmatching(_micmatching), trimIn(_trimIn), usehints(_usehints), metric(_metric),
-  batch(_batch), ubsco(_ubsco), mmsco(_mmsco), opt(_opt), cArray(nullptr, nullptr), tbuffer(nullptr, nullptr),
+  batch(_batch), ubsco(_ubsco), mmsco(_mmsco), opt(_opt),
   map(nullptr, nullptr), cmask(nullptr, nullptr)
 {
     vi = vsapi->getVideoInfo(child);
@@ -2142,10 +2141,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
   if (mode == 1 || mode == 2 || mode == 3 || mode == 5 || mode == 6 || mode == 7 ||
     PP > 0 || micout > 0 || micmatching > 0)
   {
-    cArray = decltype(cArray) (vsh::vsh_aligned_malloc<int>((((vi->width + xhalf) >> xshift) + 1)*(((vi->height + yhalf) >> yshift) + 1) * 4 * sizeof(int), 16), &vsh::vsh_aligned_free);
-    if (!cArray) {
-        throw TIVTCError("TFM:  malloc failure (cArray)!");
-    }
+    cArray.resize((size_t)(((vi->width + xhalf) >> xshift) + 1) * (((vi->height + yhalf) >> yshift) + 1) * 4);
     cmask = decltype(cmask) (vsapi->newVideoFrame(&vi->format, vi->width, vi->height, nullptr, core), vsapi->freeFrame);
   }
 
@@ -2205,8 +2201,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
   }
 #undef ALIGN_NUMBER
 
-  tbuffer = decltype(tbuffer) (vsh::vsh_aligned_malloc<uint8_t>((vi->height >> 1) * tpitchy, ALIGN_BUF), &vsh::vsh_aligned_free);
-  if (!tbuffer) throw TIVTCError("TFM:  malloc failure (tbuffer)!");
+  tbuffer.resize((size_t)(vi->height >> 1) * tpitchy);
   mode7_field = field;
   if (input.size())
   {
@@ -2851,7 +2846,7 @@ TFM::~TFM()
     {
       if ((f = tivtc_fopen(outputFull, "w")) != nullptr)
       {
-        char tempBuf[256], tb2[256];
+        char tb2[256];
         int match, sn = micout == 1 ? 3 : 5;
         if (moutArrayE.size())
         {
@@ -2868,30 +2863,30 @@ TFM::~TFM()
           if (outArray[h] & FILE_ENTRY)
           {
             match = (outArray[h] & 0x07);
-            sprintf(tempBuf, "%d %c", h, MTC(match));
+            std::string line = std::to_string(h);
+            line += ' ';
+            line += (char)(MTC(match));
             if (outArray[h] & 0x20)
-            {
-              if (outArray[h] & 0x10) strcat(tempBuf, " +");
-              else strcat(tempBuf, " -");
-            }
-            if (outArray[h] & FILE_D2V) strcat(tempBuf, " 1");
+              line += (outArray[h] & 0x10) ? " +" : " -";
+            if (outArray[h] & FILE_D2V) line += " 1";
             if (moutArray.size() && moutArray[h] != -1)
             {
-              sprintf(tb2, " [%d]", moutArray[h]);
-              strcat(tempBuf, tb2);
+              line += " [";
+              line += std::to_string(moutArray[h]);
+              line += ']';
             }
             if (moutArrayE.size())
             {
               int th = h*sn;
-              if (sn == 3) sprintf(tb2, " (%d %d %d)", moutArrayE[th + 0],
+              if (sn == 3) snprintf(tb2, sizeof(tb2), " (%d %d %d)", moutArrayE[th + 0],
                 moutArrayE[th + 1], moutArrayE[th + 2]);
-              else sprintf(tb2, " (%d %d %d %d %d)", moutArrayE[th + 0],
+              else snprintf(tb2, sizeof(tb2), " (%d %d %d %d %d)", moutArrayE[th + 0],
                 moutArrayE[th + 1], moutArrayE[th + 2], moutArrayE[th + 3],
                 moutArrayE[th + 4]);
-              strcat(tempBuf, tb2);
+              line += tb2;
             }
-            strcat(tempBuf, "\n");
-            fprintf(f, "%s", tempBuf);
+            line += '\n';
+            fputs(line.c_str(), f);
           }
         }
         generateOvrHelpOutput(f);

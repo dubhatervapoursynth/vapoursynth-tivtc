@@ -263,7 +263,7 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
   xblocksi = xblocks4;
   const int yblocks = ((Height + yhalf) >> yshift) + 1;
   const int arraysize = (xblocks*yblocks) << 2;
-  memset(cArray.get(), 0, arraysize * sizeof(int));
+  std::fill(cArray.begin(), cArray.end(), 0);
 
   int Heighta = (Height >> (yshift - 1)) << (yshift - 1);
   if (Heighta == Height) Heighta = Height - yhalf;
@@ -278,10 +278,10 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
       {
         const int box1 = (x >> xshift) << 2;
         const int box2 = ((x + xhalf) >> xshift) << 2;
-        ++cArray.get()[temp1 + box1 + 0];
-        ++cArray.get()[temp1 + box2 + 1];
-        ++cArray.get()[temp2 + box1 + 2];
-        ++cArray.get()[temp2 + box2 + 3];
+        ++cArray[temp1 + box1 + 0];
+        ++cArray[temp1 + box2 + 1];
+        ++cArray[temp2 + box1 + 2];
+        ++cArray[temp2 + box2 + 3];
       }
     }
     cmkpp += cmk_pitch;
@@ -314,10 +314,10 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
         {
           const int box1 = (x >> xshift) << 2;
           const int box2 = ((x + xhalf) >> xshift) << 2;
-          cArray.get()[temp1 + box1 + 0] += sum;
-          cArray.get()[temp1 + box2 + 1] += sum;
-          cArray.get()[temp2 + box1 + 2] += sum;
-          cArray.get()[temp2 + box2 + 3] += sum;
+          cArray[temp1 + box1 + 0] += sum;
+          cArray[temp1 + box2 + 1] += sum;
+          cArray[temp2 + box1 + 2] += sum;
+          cArray[temp2 + box2 + 3] += sum;
         }
       }
     }
@@ -340,10 +340,10 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
       {
         const int box1 = (x >> xshift) << 2;
         const int box2 = ((x + xhalf) >> xshift) << 2;
-        cArray.get()[temp1 + box1 + 0] += sum;
-        cArray.get()[temp1 + box2 + 1] += sum;
-        cArray.get()[temp2 + box1 + 2] += sum;
-        cArray.get()[temp2 + box2 + 3] += sum;
+        cArray[temp1 + box1 + 0] += sum;
+        cArray[temp1 + box2 + 1] += sum;
+        cArray[temp2 + box1 + 2] += sum;
+        cArray[temp2 + box2 + 3] += sum;
       }
     }
     cmkpp += cmk_pitch*yhalf;
@@ -360,10 +360,10 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
       {
         const int box1 = (x >> xshift) << 2;
         const int box2 = ((x + xhalf) >> xshift) << 2;
-        ++cArray.get()[temp1 + box1 + 0];
-        ++cArray.get()[temp1 + box2 + 1];
-        ++cArray.get()[temp2 + box1 + 2];
-        ++cArray.get()[temp2 + box2 + 3];
+        ++cArray[temp1 + box1 + 0];
+        ++cArray[temp1 + box2 + 1];
+        ++cArray[temp2 + box1 + 2];
+        ++cArray[temp2 + box2 + 3];
       }
     }
     cmkpp += cmk_pitch;
@@ -372,9 +372,9 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
   }
   for (int x = 0; x < arraysize; ++x)
   {
-    if (cArray.get()[x] > mics[match])
+    if (cArray[x] > mics[match])
     {
-      mics[match] = cArray.get()[x];
+      mics[match] = cArray[x];
       blockN[match] = x;
     }
   }
@@ -404,11 +404,11 @@ void TFM::buildDiffMapPlane_Planar(const uint8_t *prvp, const uint8_t *nxtp,
 {
   buildABSDiffMask<pixel_t>(prvp - prv_pitch, nxtp - nxt_pitch, prv_pitch, nxt_pitch, tpitch, Width, Height >> 1);
   switch (bits_per_pixel) {
-  case 8: AnalyzeDiffMask_Planar<uint8_t, 8>(dstp, dst_pitch, tbuffer.get(), tpitch, Width, Height); break;
-  case 10: AnalyzeDiffMask_Planar<uint16_t, 10>(dstp, dst_pitch, tbuffer.get(), tpitch, Width, Height); break;
-  case 12: AnalyzeDiffMask_Planar<uint16_t, 12>(dstp, dst_pitch, tbuffer.get(), tpitch, Width, Height); break;
-  case 14: AnalyzeDiffMask_Planar<uint16_t, 14>(dstp, dst_pitch, tbuffer.get(), tpitch, Width, Height); break;
-  case 16: AnalyzeDiffMask_Planar<uint16_t, 16>(dstp, dst_pitch, tbuffer.get(), tpitch, Width, Height); break;
+  case 8: AnalyzeDiffMask_Planar<uint8_t, 8>(dstp, dst_pitch, tbuffer.data(), tpitch, Width, Height); break;
+  case 10: AnalyzeDiffMask_Planar<uint16_t, 10>(dstp, dst_pitch, tbuffer.data(), tpitch, Width, Height); break;
+  case 12: AnalyzeDiffMask_Planar<uint16_t, 12>(dstp, dst_pitch, tbuffer.data(), tpitch, Width, Height); break;
+  case 14: AnalyzeDiffMask_Planar<uint16_t, 14>(dstp, dst_pitch, tbuffer.data(), tpitch, Width, Height); break;
+  case 16: AnalyzeDiffMask_Planar<uint16_t, 16>(dstp, dst_pitch, tbuffer.data(), tpitch, Width, Height); break;
   }
 }
 

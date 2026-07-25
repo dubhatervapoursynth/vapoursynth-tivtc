@@ -50,14 +50,13 @@
 
 void TDecimate::formatDecs(std::string &buf, Cycle &current)
 {
-  char tempBuf[40];
   int i = current.cycleS, b = current.frameSO;
   for (; i < current.cycleE; ++i, ++b)
   {
     if (current.decimate[i] == 1)
     {
-      sprintf(tempBuf, " %d", b);
-      buf += tempBuf;
+      buf += ' ';
+      buf += std::to_string(b);
     }
   }
 }
@@ -123,9 +122,9 @@ void TDecimate::displayOutput(VSFrame *dst, int n,
 {
 //  int y = 0;
 #define SZ 160
-  char buf[SZ], tempBuf[40];
+  char buf[SZ]; // snprintf scratch only; everything is appended to `text` directly
 
-  std::string text = "TDecimate " VERSION " by tritical\n";
+  std::string text;
 
 //  constexpr auto FONT_WIDTH = 10; // info_h
 //  constexpr auto FONT_HEIGHT = 20; // info_h
@@ -156,25 +155,17 @@ void TDecimate::displayOutput(VSFrame *dst, int n,
     {
       snprintf(buf, SZ, "%d%s%3.2f", curr.frame + x, curr.decimate[x] == 1 ? ":**" : ":  ",
         curr.diffMetricsN[x]);
+      text += buf;
       if (mc >= 0)
       {
-        sprintf(tempBuf, " %c", MTC(mc));
-        strcat(buf, tempBuf);
+        text += ' ';
+        text += (char)(MTC(mc));
         if (checkMatchDup(mp, mc))
-        {
-          sprintf(tempBuf, " (%s)", "mdup");
-          strcat(buf, tempBuf);
-        }
+          text += " (mdup)";
         if (curr.filmd2v[x] == 1)
-        {
-          sprintf(tempBuf, " (%s)", "d2vdup");
-          strcat(buf, tempBuf);
-        }
+          text += " (d2vdup)";
       }
 
-//      int len = (int)strlen(buf);
-
-      text += buf;
       text += "\n";
 
 //      Draw(dst, current_column_x, y++, buf, vi_disp);
@@ -206,30 +197,21 @@ void TDecimate::displayOutput(VSFrame *dst, int n,
     {
       snprintf(buf, SZ, "%d%s%3.2f", curr.frame + x, curr.decimate[x] == 1 ? ":**" : ":  ",
         curr.diffMetricsN[x]);
+      text += buf;
       if (mc >= 0)
       {
-        sprintf(tempBuf, " %c", MTC(mc));
-        strcat(buf, tempBuf);
+        text += ' ';
+        text += (char)(MTC(mc));
       }
-      sprintf(tempBuf, " %s", curr.dupArray[x] == 1 ? "(dup)" : "(new)");
-      strcat(buf, tempBuf);
+      text += curr.dupArray[x] == 1 ? " (dup)" : " (new)";
       if (mc >= 0)
       {
         if (checkMatchDup(mp, mc))
-        {
-          sprintf(tempBuf, " (%s)", "mdup");
-          strcat(buf, tempBuf);
-        }
+          text += " (mdup)";
         if (curr.filmd2v[x] == 1)
-        {
-          sprintf(tempBuf, " (%s)", "d2vdup");
-          strcat(buf, tempBuf);
-        }
+          text += " (d2vdup)";
       }
 
-//      int len = (int)strlen(buf);
-
-      text += buf;
       text += "\n";
 
 //      Draw(dst, current_column_x, y++, buf, vi_disp);
@@ -277,6 +259,5 @@ void TDecimate::displayOutput(VSFrame *dst, int n,
 //  }
 #undef SZ
 
-    VSMap *props = vsapi->getFramePropertiesRW(dst);
-    vsapi->mapSetData(props, PROP_TDecimateDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
+    setDisplayText(dst, text);
 }

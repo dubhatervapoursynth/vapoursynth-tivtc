@@ -138,7 +138,7 @@ private:
   double fps, mkvfps, mkvfps2;
   bool useTFMPP, cve, fullInfo;
   bool usehints;
-  std::unique_ptr<uint64_t, decltype (&vsh::vsh_aligned_free)> diff;
+  std::vector<uint64_t> diff; // per-block metric accumulator
   std::vector<uint64_t> metricsArray, metricsOutArray, mode2_metrics;
   std::vector<int> aLUT, mode2_decA, mode2_order;
   std::unordered_map<int, std::pair<int64_t, int64_t>> frame_duration_info; // API 4 fps/duration are 64 bit
@@ -149,9 +149,27 @@ private:
   char outputFull[MAX_PATH];
 
   void init_mode_5(VSCore *core);
+  int runMode5DecimationPass(int passThrough, std::vector<int> &input_magic_numbers,
+    Cycle &prevM, Cycle &currM, Cycle &nextM, VSCore *core);
+  void smoothMode5VideoRuns(std::vector<int> &input_magic_numbers);
+  void writeMode5Timecodes(const std::vector<int> &input_magic_numbers, int64_t fpsNum, int64_t frameNum);
+  void buildMode5LUT(const std::vector<int> &input_magic_numbers);
   void rerunFromStart(const int s, VSFrameContext *frameCtx, VSCore *core);
   void checkVideoMetrics(Cycle &c, double thresh);
   void checkVideoMatches(Cycle &p, Cycle &c);
+
+  // Shared cycle bookkeeping, used by GetFrameMode01, GetFrameMode3 and rerunFromStart.
+  bool cycleIsVideo(const Cycle &p, const Cycle &c, const Cycle &n, int scenetest) const;
+  void decideDecimation(Cycle &p, Cycle &c, Cycle &n, bool useMostSimilar);
+  void advanceCycles(int evalGroup, bool recordMetrics, bool gateVideoChecks, bool rotateNbuf,
+    VSFrameContext *frameCtx, VSCore *core);
+  void fillBlendUpConvert(struct OutputInfo *o, int n, int remove);
+  void prebufferNextCycle(VSFrameContext *frameCtx, VSCore *core);
+  void classifyCurrentCycle();
+  VSFrame *renderOutputInfo(const struct OutputInfo *o, VSFrameContext *frameCtx, VSCore *core);
+  void setDisplayText(VSFrame *dst, const std::string &body) const;
+  bool requestChosenFrame(int activationReason, void **frameData, int ret, VSFrameContext *frameCtx);
+  const VSFrame *chosenFrameWithDisplay(int ret, VSFrameContext *frameCtx, VSCore *core, const std::string &body);
   bool checkMatchDup(int mp, int mc);
   void findDupStrings(Cycle &p, Cycle &c, Cycle &n);
 
@@ -194,9 +212,10 @@ private:
   void sortMetrics(uint64_t *metrics, int *order, int length) const;
   //void SedgeSort(uint64_t *metrics, int *order, int length);
   //void pQuickerSort(uint64_t *metrics, int *order, int lower, int upper);
-  void calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *core, VSFrameContext *frameCtx=nullptr) const;
+  // Not const: both write into the shared `diff` scratch buffer.
+  void calcMetricCycle(Cycle &current, bool scene, bool hnt, VSCore *core, VSFrameContext *frameCtx=nullptr);
   uint64_t calcMetric(const VSFrame *prevt, const VSFrame *currt, const VSVideoInfo *vi, int &blockNI,
-    int &xblocksI, uint64_t &metricF, bool scene, VSCore *core) const;
+    int &xblocksI, uint64_t &metricF, bool scene, VSCore *core);
 
 
   void calcBlendRatios2(double &amount1, double &amount2, int &frame1,

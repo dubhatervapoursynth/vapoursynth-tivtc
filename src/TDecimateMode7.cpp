@@ -146,34 +146,25 @@ const VSFrame * TDecimate::GetFrameMode7(int n, int activationReason, void **fra
 //    }
 //  }
 
-  if (activationReason == arInitial || (activationReason == arAllFramesReady && (intptr_t)*frameData != RetFrameIsReady)) {
-      vsapi->requestFrameFilter(ret, clip2, frameCtx);
-      *frameData = (void *)RetFrameIsReady;
+  if (requestChosenFrame(activationReason, frameData, ret, frameCtx))
       return nullptr;
-  }
 
-  const VSFrame *src = vsapi->getFrameFilter(ret, clip2, frameCtx);
-
+  std::string body;
   if (display)
   {
-    VSFrame *dst = vsapi->copyFrame(src, core);
-    vsapi->freeFrame(src);
-
 #define SZ 160
     char buf[SZ] = { 0 };
 
-    std::string text = "TDecimate " VERSION " by tritical\n";
-
     snprintf(buf, SZ, "Mode: 7  Rate = %3.6f\n", rate);
-    text += buf;
+    body += buf;
     snprintf(buf, SZ, "inframe = %d  useframe = %d  chosen = %d\n", n, ret, chosen);
-    text += buf;
+    body += buf;
     snprintf(buf, SZ, "p = %d  c1 = %d  c2 = %d  n = %d\n", prev_f,
       curr1_f, curr2_f, next_f);
-    text += buf;
+    body += buf;
     snprintf(buf, SZ, "dt = %3.2f  %" PRIu64 "  vt = %3.2f  %" PRIu64 "\n", dupThresh, same_thresh,
       vidThresh, diff_thresh);
-    text += buf;
+    body += buf;
 
     for (int i = std::max(0, ret - 3); i <= std::min(ret + 3, nfrms); ++i)
     {
@@ -182,16 +173,11 @@ const VSFrame * TDecimate::GetFrameMode7(int n, int activationReason, void **fra
         metricsOutArray[i << 1] > diff_thresh ? "  (N)" :
         aLUT[i] == 2 ? "  (N)" : aLUT[i] == 1 ? "  (S)" :
         aLUT[i] == 0 ? "  (D)" : "", wasChosen(i, n) ? "  *" : "");
-    text += buf;
+    body += buf;
     }
 #undef SZ
-
-    VSMap *props = vsapi->getFramePropertiesRW(dst);
-    vsapi->mapSetData(props, PROP_TDecimateDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
-
-    return dst;
   }
-  return src;
+  return chosenFrameWithDisplay(ret, frameCtx, core, body);
 }
 
 bool TDecimate::wasChosen(int i, int n)

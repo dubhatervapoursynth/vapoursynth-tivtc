@@ -116,42 +116,21 @@ const VSFrame * TDecimate::GetFrameMode2(int n, int activationReason, void **fra
     return nullptr;
   }
 
-  if (activationReason == arInitial || (activationReason == arAllFramesReady && (intptr_t)*frameData != RetFrameIsReady)) {
-      vsapi->requestFrameFilter(ret, clip2, frameCtx);
-      *frameData = (void *)RetFrameIsReady;
+  if (requestChosenFrame(activationReason, frameData, ret, frameCtx))
       return nullptr;
-  }
 
-//  if (debug)
-//  {
-//    sprintf(buf, "TDecimate:  inframe = %d  useframe = %d  rate = %3.6f\n", n, ret, rate);
-//    OutputDebugString(buf);
-//  }
-
-  const VSFrame *src = vsapi->getFrameFilter(ret, clip2, frameCtx);
-
+  std::string body;
   if (display)
   {
-    VSFrame *dst = vsapi->copyFrame(src, core);
-    vsapi->freeFrame(src);
-
 #define SZ 160
     char buf[SZ] = { 0 };
-
-    std::string text = "TDecimate " VERSION " by tritical\n";
-
     snprintf(buf, SZ, "Mode: 2  Rate = %3.6f\n", rate);
-    text += buf;
+    body += buf;
     snprintf(buf, SZ, "inframe = %d  useframe = %d\n", n, ret);
-    text += buf;
+    body += buf;
 #undef SZ
-
-    VSMap *props = vsapi->getFramePropertiesRW(dst);
-    vsapi->mapSetData(props, PROP_TDecimateDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
-
-    return dst;
   }
-  return src;
+  return chosenFrameWithDisplay(ret, frameCtx, core, body);
 }
 
 int TDecimate::getNonDecMode2(int n, int start, int stop) const
