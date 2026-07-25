@@ -24,6 +24,7 @@
 */
 
 #include <cstring>
+#include <string>
 #include <memory>
 #include "TFM.h"
 
@@ -185,13 +186,14 @@ int TFM::D2V_find_and_correct(std::vector<int> &array, bool &found, int &tff) co
   found = false;
   tff = -1;
   int count = 1, sync = 0, f1, f2, fix, temp, change;
+  // The field order follows from the very first entry. This used to be derived inside the
+  // transition loop below, which starts at count = 1 and so never runs for a single-entry d2v
+  // (one frame of video) -- leaving tff at -1 and making the caller reject a file that plainly
+  // does have an entry. Only a genuinely empty array leaves tff unset now.
+  if (array[0] != 9)
+    tff = array[0] < 2 ? 0 : 1;
   while (array[count] != 9)
   {
-    if (tff == -1)
-    {
-      if (array[count - 1] < 2) tff = 0;
-      else tff = 1;
-    }
     fix = D2V_check_illegal(array[count - 1], array[count]);
     if (!fix)
     {
@@ -317,13 +319,44 @@ int TFM::D2V_check_final(const std::vector<int> &array) const
   return 0;
 }
 
+// fgets() stops at the buffer size and leaves the remainder to be read as though it were a fresh
+// line. For a d2v data line that is silent corruption: the continuation starts with a hex digit,
+// so isD2VFlagChar() accepts it as another data line and skipD2VHeaderFields() then eats its first
+// tokens as header fields, dropping real flag bytes and misaligning everything after. Read whole
+// logical lines instead, however long they are. The trailing newline is kept so callers that echo
+// the line back out reproduce the file exactly.
+static bool readD2VLine(FILE *f, std::string &line)
+{
+  line.clear();
+  char buf[1024];
+  while (fgets(buf, sizeof(buf), f) != nullptr)
+  {
+    line += buf;
+    if (line.back() == '\n') return true;
+  }
+  return !line.empty();
+}
+
+// The frame data begins somewhere after the "Location" line, but how many blank or other lines sit
+// in between is not something the format guarantees. Skip forward to the first line that actually
+// looks like data rather than assuming a fixed number.
+static bool seekToD2VData(FILE *f, std::string &line)
+{
+  while (readD2VLine(f, line))
+  {
+    if (!line.empty() && isD2VFlagChar(line[0])) return true;
+  }
+  return false;
+}
+
 int TFM::D2V_initialize_array(std::vector<int> &array, int &d2vtype, int &frames) const
 {
     std::unique_ptr<FILE, decltype (&fclose)> ind2v(nullptr, nullptr);
   if (array.size() != 0) { array.resize(0); }
   int num = 0, num2 = 0, pass = 1, D2Vformat = 0;
   unsigned int val; // %x writes through an unsigned int*
-  char line[1025], *p;
+  std::string line;
+  char *p;
   // pass 1 counts the flag bytes, pass 2 fills the array; the file is read twice
   for (; pass <= 2; ++pass)
   {
@@ -333,15 +366,15 @@ int TFM::D2V_initialize_array(std::vector<int> &array, int &d2vtype, int &frames
   {
     array.resize(num + 10, 9);
   }
-  if (fgets(line, 1024, ind2v.get()) == nullptr) return 2;
+  if (!readD2VLine(ind2v.get(), line)) return 2;
   D2Vformat = 0;
-  if (strncmp(line, "DVD2AVIProjectFile", 18) != 0)
+  if (strncmp(line.c_str(), "DVD2AVIProjectFile", 18) != 0)
   {
-    if (strncmp(line, "DGIndexProjectFile", 18) != 0)
+    if (strncmp(line.c_str(), "DGIndexProjectFile", 18) != 0)
     {
       return 2;
     }
-    sscanf(line, "DGIndexProjectFile%d", &D2Vformat);
+    sscanf(line.c_str(), "DGIndexProjectFile%d", &D2Vformat);
     /* Disabled the check for newer formats
     if (D2Vformat > 14)
     {
@@ -352,25 +385,26 @@ int TFM::D2V_initialize_array(std::vector<int> &array, int &d2vtype, int &frames
     */
     D2Vformat += 3;
   }
-  if (D2Vformat == 0) sscanf(line, "DVD2AVIProjectFile%d", &D2Vformat);
+  if (D2Vformat == 0) sscanf(line.c_str(), "DVD2AVIProjectFile%d", &D2Vformat);
   bool found_location = false;
-  while (fgets(line, 1024, ind2v.get()) != nullptr)
+  while (readD2VLine(ind2v.get(), line))
   {
-    if (strncmp(line, "Location", 8) == 0) { found_location = true; break; }
+    if (strncmp(line.c_str(), "Location", 8) == 0) { found_location = true; break; }
   }
-  // Without these three lines there is no frame data to parse, and continuing would read
-  // whatever the last successful fgets left in "line".
+  // Without a Location line and some data after it there is nothing to parse.
   if (!found_location) return 2;
-  if (fgets(line, 1024, ind2v.get()) == nullptr) return 2;
-  if (fgets(line, 1024, ind2v.get()) == nullptr) return 2;
+  if (!seekToD2VData(ind2v.get(), line)) return 2;
   do
   {
-    p = skipD2VHeaderFields(line, D2Vformat);
+    p = skipD2VHeaderFields(&line[0], D2Vformat);
     while (isD2VFlagChar(*p))
     {
       if (pass == 1) ++num;
       else
       {
+        // pass 1 sized the array; if the file changed underneath us between the two reads,
+        // stop rather than writing past the end
+        if (num2 >= (int)array.size()) break;
         if (sscanf(p, "%x", &val) != 1) break;
         if (D2Vformat > 9)
         {
@@ -383,7 +417,7 @@ int TFM::D2V_initialize_array(std::vector<int> &array, int &d2vtype, int &frames
       while (*p && *p != ' ' && *p != '\n') p++;
       p++;
     }
-  } while ((fgets(line, 1024, ind2v.get()) != nullptr) && isD2VFlagChar(line[0]));
+  } while (readD2VLine(ind2v.get(), line) && !line.empty() && isD2VFlagChar(line[0]));
   }
   d2vtype = D2Vformat;
   frames = 0;
@@ -402,20 +436,21 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
 {
   int num = 0, D2Vformat;
   unsigned int val; // %x writes through an unsigned int*
-  char line[1025], *p, tbuf[16];
+  std::string line;
+  char *p, tbuf[16];
   std::unique_ptr<FILE, decltype (&fclose)> ind2v(tivtc_fopen(d2v.c_str(), "r"), &fclose);
   if (ind2v == nullptr) return 1;
   std::unique_ptr<FILE, decltype (&fclose)> outd2v(tivtc_fopen(wfile, "w"), &fclose);
   if (outd2v == nullptr) return 2;
-  if (fgets(line, 1024, ind2v.get()) == nullptr) return 3;
+  if (!readD2VLine(ind2v.get(), line)) return 3;
   D2Vformat = 0;
-  if (strncmp(line, "DVD2AVIProjectFile", 18) != 0)
+  if (strncmp(line.c_str(), "DVD2AVIProjectFile", 18) != 0)
   {
-    if (strncmp(line, "DGIndexProjectFile", 18) != 0)
+    if (strncmp(line.c_str(), "DGIndexProjectFile", 18) != 0)
     {
       return 3;
     }
-    sscanf(line, "DGIndexProjectFile%d", &D2Vformat);
+    sscanf(line.c_str(), "DGIndexProjectFile%d", &D2Vformat);
     /* Disabled the check for newer formats
     if (D2Vformat > 14)
     {
@@ -426,24 +461,30 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
     */
     D2Vformat += 3;
   }
-  if (D2Vformat == 0) sscanf(line, "DVD2AVIProjectFile%d", &D2Vformat);
-  fputs(line, outd2v.get());
+  if (D2Vformat == 0) sscanf(line.c_str(), "DVD2AVIProjectFile%d", &D2Vformat);
+  fputs(line.c_str(), outd2v.get());
   bool found_location = false;
-  while (fgets(line, 1024, ind2v.get()) != nullptr)
+  while (readD2VLine(ind2v.get(), line))
   {
-    fputs(line, outd2v.get());
-    if (strncmp(line, "Location", 8) == 0) { found_location = true; break; }
+    fputs(line.c_str(), outd2v.get());
+    if (strncmp(line.c_str(), "Location", 8) == 0) { found_location = true; break; }
   }
   if (!found_location) return 3;
-  if (fgets(line, 1024, ind2v.get()) == nullptr) return 3;
-  fputs(line, outd2v.get());
-  if (fgets(line, 1024, ind2v.get()) == nullptr) return 3;
+  // Echo whatever sits between Location and the first data line, however much of it there is.
+  bool found_data = false;
+  while (readD2VLine(ind2v.get(), line))
+  {
+    if (!line.empty() && isD2VFlagChar(line[0])) { found_data = true; break; }
+    fputs(line.c_str(), outd2v.get());
+  }
+  if (!found_data) return 3;
   bool have_line;
   do
   {
-    p = skipD2VHeaderFields(line, D2Vformat);
+    p = skipD2VHeaderFields(&line[0], D2Vformat);
     while (isD2VFlagChar(*p))
     {
+      if (num >= (int)array.size()) break;
       if (D2Vformat < 10)
       {
         while (*(p + 1) >= '0' && *(p + 1) <= '9') p++;
@@ -467,13 +508,13 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
       while (*p && *p != ' ' && *p != '\n') p++;
       p++;
     }
-    fputs(line, outd2v.get());
-    have_line = (fgets(line, 1024, ind2v.get()) != nullptr);
-  } while (have_line && isD2VFlagChar(line[0]));
+    fputs(line.c_str(), outd2v.get());
+    have_line = readD2VLine(ind2v.get(), line);
+  } while (have_line && !line.empty() && isD2VFlagChar(line[0]));
   // At EOF "line" still holds the previous iteration's text, which the loop already wrote out;
   // only echo it when fgets actually produced a new line.
-  if (have_line) fputs(line, outd2v.get());
-  while (fgets(line, 1024, ind2v.get()) != nullptr) fputs(line, outd2v.get());
+  if (have_line) fputs(line.c_str(), outd2v.get());
+  while (readD2VLine(ind2v.get(), line)) fputs(line.c_str(), outd2v.get());
   return 0;
 }
 
