@@ -28,6 +28,24 @@
 #include <memory>
 #include "TFM.h"
 
+// fgets() stops at the buffer size and leaves the remainder to be read as though it were a fresh
+// line. For a d2v data line that is silent corruption: the continuation starts with a hex digit,
+// so isD2VFlagChar() accepts it as another data line and skipD2VHeaderFields() then eats its first
+// tokens as header fields, dropping real flag bytes and misaligning everything after. Read whole
+// logical lines instead, however long they are. The trailing newline is kept so callers that echo
+// the line back out reproduce the file exactly.
+static bool readD2VLine(FILE *f, std::string &line)
+{
+  line.clear();
+  char buf[1024];
+  while (fgets(buf, sizeof(buf), f) != nullptr)
+  {
+    line += buf;
+    if (line.back() == '\n') return true;
+  }
+  return !line.empty();
+}
+
 void TFM::parseD2V()
 {
     std::vector<int> valIn;
@@ -143,7 +161,7 @@ int TFM::fillTrimArray(int frames)
 {
   trimArray.resize(frames, 1);
   int x, y, v;
-  char linein[81];
+  std::string linein;
   if (sscanf(trimIn.c_str(), "%d,%d", &x, &y) == 2)
   {
     if (x < 0 && abs(x) <= frames)
@@ -159,9 +177,9 @@ int TFM::fillTrimArray(int frames)
   {
     std::unique_ptr<FILE, decltype (&fclose)> f(tivtc_fopen(trimIn.c_str(), "r"), &fclose);
     if (f == nullptr) return 2;
-    while (fgets(linein, 80, f.get()) != nullptr)
+    while (readD2VLine(f.get(), linein))
     {
-      if (sscanf(linein, "%d,%d", &x, &y) != 2)
+      if (sscanf(linein.c_str(), "%d,%d", &x, &y) != 2)
         continue;
       if (x < 0 && abs(x) <= frames)
         x = frames + x;
@@ -317,24 +335,6 @@ int TFM::D2V_check_final(const std::vector<int> &array) const
     ++i;
   }
   return 0;
-}
-
-// fgets() stops at the buffer size and leaves the remainder to be read as though it were a fresh
-// line. For a d2v data line that is silent corruption: the continuation starts with a hex digit,
-// so isD2VFlagChar() accepts it as another data line and skipD2VHeaderFields() then eats its first
-// tokens as header fields, dropping real flag bytes and misaligning everything after. Read whole
-// logical lines instead, however long they are. The trailing newline is kept so callers that echo
-// the line back out reproduce the file exactly.
-static bool readD2VLine(FILE *f, std::string &line)
-{
-  line.clear();
-  char buf[1024];
-  while (fgets(buf, sizeof(buf), f) != nullptr)
-  {
-    line += buf;
-    if (line.back() == '\n') return true;
-  }
-  return !line.empty();
 }
 
 // The frame data begins somewhere after the "Location" line, but how many blank or other lines sit
