@@ -848,6 +848,21 @@ uint64_t TDecimate::calcMetric(const VSFrame *prevt, const VSFrame *currt, const
 {
   uint64_t highestDiff = 0;
 
+  int xblocks = ((vit->width + blockx_half) >> blockx_shift) + 1;
+  int xblocks4 = xblocks << 2;
+  int yblocks = ((vit->height + blocky_half) >> blocky_shift) + 1;
+  int arraysize = (xblocks * yblocks) << 2;
+
+  // Mode 4 produces frames concurrently (fmParallel), so it must not share the member `diff`
+  // scratch across worker threads; give each invocation its own. Every other mode has its frame
+  // production serialised by its filter mode and can keep using the member buffer.
+  std::vector<uint64_t> ownDiff;
+  uint64_t *metricDiff = diff.data();
+  if (mode == 4) {
+    ownDiff.resize(arraysize);
+    metricDiff = ownDiff.data();
+  }
+
   struct CalcMetricData d;
   d.predenoise = predenoise;
   d.vi = *vit;
@@ -858,7 +873,7 @@ uint64_t TDecimate::calcMetric(const VSFrame *prevt, const VSFrame *currt, const
   d.blocky = blocky;
   d.blocky_half = blocky_half;
   d.blocky_shift = blocky_shift;
-  d.diff = diff.data();
+  d.diff = metricDiff;
   d.nt = nt;
   d.ssd = ssd;
 
@@ -868,20 +883,15 @@ uint64_t TDecimate::calcMetric(const VSFrame *prevt, const VSFrame *currt, const
 
   CalcMetricsExtracted(prevt, currt, d, core, vsapi);
 
-  int xblocks = ((d.vi.width + d.blockx_half) >> d.blockx_shift) + 1;
-  int xblocks4 = xblocks << 2;
-  int yblocks = ((d.vi.height + d.blocky_half) >> d.blocky_shift) + 1;
-  int arraysize = (xblocks * yblocks) << 2;
-
   // output parameters
   blockNI = -20;
   xblocksI = xblocks4;
 
   for (int x = 0; x < arraysize; ++x)
   {
-    if (diff[x] > highestDiff)
+    if (metricDiff[x] > highestDiff)
     {
-      highestDiff = diff[x];
+      highestDiff = metricDiff[x];
       blockNI = x;
     }
   }

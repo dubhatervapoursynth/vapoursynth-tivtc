@@ -445,7 +445,7 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, [[maybe_unused]] 
         fmParallelRequests,
         fmUnordered, // Either fmUnordered or fmParallelRequests. I figured out which one but I didn't write it down and forgot.
         fmUnordered, // mode 3 also needs linear access; it detects and reports violations itself
-        fmParallelRequests, // mode 4: serialized production - calcMetric() shares the member `diff` scratch buffer
+        fmParallel, // mode 4 uses per-invocation metric scratch and is safe to run concurrently
         fmParallel,
         fmParallel,
         fmUnordered
