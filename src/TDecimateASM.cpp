@@ -28,7 +28,7 @@
 #include "TCommonASM.h"
 #include <assert.h>
 
-static void blend_uint8_c(uint8_t* dstp, const uint8_t* srcp1,
+static void blend_uint8_c(uint8_t* __restrict dstp, const uint8_t* srcp1,
   const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch,
   ptrdiff_t src1_pitch, ptrdiff_t src2_pitch, int weight_i)
 {
@@ -49,7 +49,7 @@ static void blend_uint8_c(uint8_t* dstp, const uint8_t* srcp1,
   }
 }
 
-static void blend_uint16_c(uint8_t* dstp, const uint8_t* srcp1,
+static void blend_uint16_c(uint8_t* __restrict dstp, const uint8_t* srcp1,
   const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch,
   ptrdiff_t src1_pitch, ptrdiff_t src2_pitch, int weight_i, int bits_per_pixel)
 {

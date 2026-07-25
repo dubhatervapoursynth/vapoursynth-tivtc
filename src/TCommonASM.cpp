@@ -27,7 +27,7 @@
 
 template<typename pixel_t>
 void buildABSDiffMask_c(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height)
+  uint8_t* __restrict dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height)
 {
   if (width <= 0)
     return;
@@ -229,7 +229,7 @@ template void AnalyzeDiffMask_Planar<uint16_t, 16>(uint8_t* dstp, ptrdiff_t dst_
 // HBD ready
 template<typename pixel_t>
 void buildABSDiffMask2_c(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height, int bits_per_pixel)
+  uint8_t* __restrict dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height, int bits_per_pixel)
 {
   if (width <= 0)
     return;
@@ -257,65 +257,52 @@ void buildABSDiffMask2_c(const uint8_t* prvp, const uint8_t* nxtp,
 
 
 template<typename pixel_t>
-void check_combing_c(const pixel_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh)
+void check_combing_c(const pixel_t* srcp, uint8_t* __restrict cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh)
 {
-  // cthresh is scaled to actual bit depth
-  const pixel_t* srcppp = srcp - src_pitch * 2;
-  const pixel_t* srcpp = srcp - src_pitch;
-  const pixel_t* srcpn = srcp + src_pitch;
-  const pixel_t* srcpnn = srcp + src_pitch * 2;
-
-  int increment = 1;
-
+  // cthresh is scaled to actual bit depth.
+  // The four neighbouring rows are addressed off srcp rather than tracked as their own pointers:
+  // one induction variable per row instead of five, and x86 addresses them for free.
   const int cthresh6 = cthresh * 6;
   // no luma masking
   for (int y = 0; y < height; ++y)
   {
-    for (int x = 0; x < width; x += increment)
+    for (int x = 0; x < width; ++x)
     {
-      const int sFirst = srcp[x] - srcpp[x];
-      const int sSecond = srcp[x] - srcpn[x];
+      const int sFirst = srcp[x] - srcp[x - src_pitch];
+      const int sSecond = srcp[x] - srcp[x + src_pitch];
       if ((sFirst > cthresh && sSecond > cthresh) || (sFirst < -cthresh && sSecond < -cthresh))
       {
-        if (abs(srcppp[x] + (srcp[x] << 2) + srcpnn[x] - (3 * (srcpp[x] + srcpn[x]))) > cthresh6)
+        if (abs(srcp[x - src_pitch * 2] + (srcp[x] << 2) + srcp[x + src_pitch * 2]
+          - (3 * (srcp[x - src_pitch] + srcp[x + src_pitch]))) > cthresh6)
           cmkp[x] = 0xFF;
       }
     }
-    srcppp += src_pitch;
-    srcpp += src_pitch;
     srcp += src_pitch;
-    srcpn += src_pitch;
-    srcpnn += src_pitch;
     cmkp += cmk_pitch;
   }
 }
 // instantiate
-template void check_combing_c<uint8_t>(const uint8_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh);
-template void check_combing_c<uint16_t>(const uint16_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh);
+template void check_combing_c<uint8_t>(const uint8_t* srcp, uint8_t* __restrict cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh);
+template void check_combing_c<uint16_t>(const uint16_t* srcp, uint8_t* __restrict cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh);
 
 template<typename pixel_t, typename safeint_t>
-void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, safeint_t cthreshsq)
+void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* __restrict cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, safeint_t cthreshsq)
 {
   // cthresh is scaled to actual bit depth
-  const pixel_t* srcpp = srcp - src_pitch;
-  const pixel_t* srcpn = srcp + src_pitch;
-
   for (int y = 0; y < height; ++y)
   {
     for (int x = 0; x < width; ++x)
     {
-      if ((safeint_t)(srcp[x] - srcpp[x]) * (srcp[x] - srcpn[x]) > cthreshsq)
+      if ((safeint_t)(srcp[x] - srcp[x - src_pitch]) * (srcp[x] - srcp[x + src_pitch]) > cthreshsq)
         cmkp[x] = 0xFF;
     }
-    srcpp += src_pitch;
     srcp += src_pitch;
-    srcpn += src_pitch;
     cmkp += cmk_pitch;
   }
 }
 // instantiate
-template void check_combing_c_Metric1<uint8_t, int>(const uint8_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthreshsq);
-template void check_combing_c_Metric1<uint16_t, int64_t>(const uint16_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int64_t cthreshsq);
+template void check_combing_c_Metric1<uint8_t, int>(const uint8_t* srcp, uint8_t* __restrict cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthreshsq);
+template void check_combing_c_Metric1<uint16_t, int64_t>(const uint16_t* srcp, uint8_t* __restrict cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int64_t cthreshsq);
 
 
 
@@ -348,7 +335,7 @@ void copyFrame(VSFrame *dst, const VSFrame *src, const VSAPI *vsapi)
 // instantiate
 
 template<typename pixel_t>
-void blend_5050_c(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch, ptrdiff_t src1_pitch, ptrdiff_t src2_pitch)
+void blend_5050_c(uint8_t* __restrict dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch, ptrdiff_t src1_pitch, ptrdiff_t src2_pitch)
 {
   for (int y = 0; y < height; ++y)
   {

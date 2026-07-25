@@ -78,33 +78,28 @@ void VerticalBlur_c(const uint8_t* srcp0, uint8_t* dstp0, ptrdiff_t src_pitch,
 {
   if (width == 0) return;
 
-  pixel_t* dstp = reinterpret_cast<pixel_t *>(dstp0);
+  pixel_t* __restrict dstp = reinterpret_cast<pixel_t *>(dstp0);
   const pixel_t* srcp = reinterpret_cast<const pixel_t*>(srcp0);
-  const pixel_t* srcpp = reinterpret_cast<const pixel_t*>(srcp0 - src_pitch);
-  const pixel_t* srcpn = reinterpret_cast<const pixel_t*>(srcp0 + src_pitch);
   src_pitch /= sizeof(pixel_t);
   dst_pitch /= sizeof(pixel_t);
 
+  // the row above and below are addressed off srcp rather than tracked separately
   // top line
   for (int x = 0; x < width; x++)
-    dstp[x] = (srcp[x] + srcpn[x] + 1) >> 1;
-  srcpp += src_pitch;
+    dstp[x] = (srcp[x] + srcp[x + src_pitch] + 1) >> 1;
   srcp += src_pitch;
-  srcpn += src_pitch;
   dstp += dst_pitch;
   // height - 2 lines in between
   for (int y = 1; y < height - 1; ++y)
   {
     for (int x = 0; x < width; x++)
-      dstp[x] = (srcpp[x] + (srcp[x] << 1) + srcpn[x] + 2) >> 2;
-    srcpp += src_pitch;
+      dstp[x] = (srcp[x - src_pitch] + (srcp[x] << 1) + srcp[x + src_pitch] + 2) >> 2;
     srcp += src_pitch;
-    srcpn += src_pitch;
     dstp += dst_pitch;
   }
   // bottom line
   for (int x = 0; x < width; x++)
-    dstp[x] = (srcpp[x] + srcp[x] + 1) >> 1;
+    dstp[x] = (srcp[x - src_pitch] + srcp[x] + 1) >> 1;
 }
 
 void VerticalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
@@ -136,7 +131,7 @@ void VerticalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
 }
 
 template<typename pixel_t>
-void HorizontalBlur_Planar_c(const uint8_t* srcp0, uint8_t* dstp0, ptrdiff_t src_pitch,
+void HorizontalBlur_Planar_c(const uint8_t* srcp0, uint8_t* __restrict dstp0, ptrdiff_t src_pitch,
   ptrdiff_t dst_pitch, int width, int height, bool allow_leftminus1)
 {
   if (width == 0)

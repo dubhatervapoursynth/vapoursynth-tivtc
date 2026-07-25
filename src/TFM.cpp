@@ -1078,10 +1078,10 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
     const bool noBandExclusion = m.noBandExclusion;
     const ptrdiff_t prvf_pitch = m.prvf_pitch, curf_pitch = m.curf_pitch, nxtf_pitch = m.nxtf_pitch;
     ptrdiff_t map_pitch = m.map_pitch;
-    const pixel_t *prvpf = m.prvpf, *prvnf = m.prvnf;
-    const pixel_t *curpf = m.curpf, *curf = m.curf, *curnf = m.curnf;
-    const pixel_t *nxtpf = m.nxtpf, *nxtnf = m.nxtnf;
-    uint8_t *mapp = m.mapp, *mapn = m.mapn;
+    const pixel_t *prvpf = m.prvpf;
+    const pixel_t *curf = m.curf;
+    const pixel_t *nxtpf = m.nxtpf;
+    uint8_t *mapp = m.mapp;
 
     // back to byte pointers
     if ((match1 >= 3 && field == 1) || (match1 < 3 && field != 1))
@@ -1094,9 +1094,9 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
         map_pitch, Height >> 1, Width, bits_per_pixel);
     else
       buildDiffMapPlane2<pixel_t>(
-        reinterpret_cast<const uint8_t*>(prvnf - prvf_pitch),
-        reinterpret_cast<const uint8_t*>(nxtnf - nxtf_pitch),
-        mapn - map_pitch,
+        reinterpret_cast<const uint8_t*>(prvpf),
+        reinterpret_cast<const uint8_t*>(nxtpf),
+        mapp,
         prvf_pitch * sizeof(pixel_t),
         nxtf_pitch * sizeof(pixel_t),
         map_pitch, Height >> 1, Width, bits_per_pixel);
@@ -1110,19 +1110,19 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
       {
         for (int x = startx; x < stopx; x += incl)
         {
-          int eax = (mapp[x] << 2) + mapn[x];
+          int eax = (mapp[x] << 2) + mapp[x + map_pitch];
           if ((eax & 0xFF) == 0)
             continue;
 
-          int a_curr = curpf[x] + (curf[x] << 2) + curnf[x];
-          int a_prev = 3 * (prvpf[x] + prvnf[x]);
+          int a_curr = curf[x - curf_pitch] + (curf[x] << 2) + curf[x + curf_pitch];
+          int a_prev = 3 * (prvpf[x] + prvpf[x + prvf_pitch]);
           int diff_p_c = abs(a_prev - a_curr);
           if (diff_p_c > Const23) {
             accumPc += diff_p_c;
             if (diff_p_c > Const42 && ((eax & 10) != 0))
               accumPm += diff_p_c;
           }
-          int a_next = 3 * (nxtpf[x] + nxtnf[x]);
+          int a_next = 3 * (nxtpf[x] + nxtpf[x + nxtf_pitch]);
           int diff_n_c = abs(a_next - a_curr);
           if (diff_n_c > Const23) {
             accumNc += diff_n_c;
@@ -1134,13 +1134,8 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
 
       mapp += map_pitch;
       prvpf += prvf_pitch;
-      curpf += curf_pitch;
-      prvnf += prvf_pitch;
       curf += curf_pitch;
       nxtpf += nxtf_pitch;
-      curnf += curf_pitch;
-      nxtnf += nxtf_pitch;
-      mapn += map_pitch;
     }
 
   }
@@ -1196,10 +1191,10 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
     const bool noBandExclusion = m.noBandExclusion;
     const ptrdiff_t prvf_pitch = m.prvf_pitch, curf_pitch = m.curf_pitch, nxtf_pitch = m.nxtf_pitch;
     ptrdiff_t map_pitch = m.map_pitch;
-    const pixel_t *prvpf = m.prvpf, *prvnf = m.prvnf;
-    const pixel_t *curpf = m.curpf, *curf = m.curf, *curnf = m.curnf;
-    const pixel_t *nxtpf = m.nxtpf, *nxtnf = m.nxtnf;
-    uint8_t *mapp = m.mapp, *mapn = m.mapn;
+    const pixel_t *prvpf = m.prvpf;
+    const pixel_t *curf = m.curf;
+    const pixel_t *nxtpf = m.nxtpf;
+    uint8_t *mapp = m.mapp;
     tpitch_current = m.tpitch_current;
 
     // back to byte pointers
@@ -1213,9 +1208,9 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
           map_pitch, Height, Width, tpitch_current, bits_per_pixel);
       else
         buildDiffMapPlane_Planar<pixel_t>(
-          reinterpret_cast<const uint8_t*>(prvnf),
-          reinterpret_cast<const uint8_t*>(nxtnf),
-          mapn, 
+          reinterpret_cast<const uint8_t*>(prvpf + prvf_pitch),
+          reinterpret_cast<const uint8_t*>(nxtpf + nxtf_pitch),
+          mapp + map_pitch, 
           prvf_pitch * sizeof(pixel_t),
           nxtf_pitch * sizeof(pixel_t),
           map_pitch, Height, Width, tpitch_current, bits_per_pixel);
@@ -1231,12 +1226,12 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
         for (int x = startx; x < stopx; x += incl)
         {
           // diff from prev asm block (at buildDiffMapPlane2): <<3 instead of <<2
-          int eax = (mapp[x] << 3) + mapn[x];
+          int eax = (mapp[x] << 3) + mapp[x + map_pitch];
           if ((eax & 0xFF) == 0)
             continue;
 
-          int a_curr = curpf[x] + (curf[x] << 2) + curnf[x];
-          int a_prev = 3 * (prvpf[x] + prvnf[x]);
+          int a_curr = curf[x - curf_pitch] + (curf[x] << 2) + curf[x + curf_pitch];
+          int a_prev = 3 * (prvpf[x] + prvpf[x + prvf_pitch]);
           int diff_p_c = abs(a_prev - a_curr);
           if (diff_p_c > Const23) {
             if((eax & 9) != 0) // diff from previous similar asm block: condition
@@ -1248,7 +1243,7 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
                 accumPml += diff_p_c;
             }
           }
-          int a_next = 3 * (nxtpf[x] + nxtnf[x]);
+          int a_next = 3 * (nxtpf[x] + nxtpf[x + nxtf_pitch]);
           int diff_n_c = abs(a_next - a_curr);
           if (diff_n_c > Const23) {
             if ((eax & 9) != 0) // diff from previous similar asm block: condition
@@ -1265,13 +1260,8 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
 
       mapp += map_pitch;
       prvpf += prvf_pitch;
-      curpf += curf_pitch;
-      prvnf += prvf_pitch;
       curf += curf_pitch;
       nxtpf += nxtf_pitch;
-      curnf += curf_pitch;
-      nxtnf += nxtf_pitch;
-      mapn += map_pitch;
     }
 
   }
@@ -1320,13 +1310,11 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
     const bool noBandExclusion = m.noBandExclusion;
     const ptrdiff_t prvf_pitch = m.prvf_pitch, curf_pitch = m.curf_pitch, nxtf_pitch = m.nxtf_pitch;
     ptrdiff_t map_pitch = m.map_pitch;
-    const pixel_t *prvpf = m.prvpf, *prvnf = m.prvnf;
-    const pixel_t *curpf = m.curpf, *curf = m.curf, *curnf = m.curnf;
-    const pixel_t *nxtpf = m.nxtpf, *nxtnf = m.nxtnf;
-    uint8_t *mapp = m.mapp, *mapn = m.mapn;
+    const pixel_t *prvpf = m.prvpf;
+    const pixel_t *curf = m.curf;
+    const pixel_t *nxtpf = m.nxtpf;
+    uint8_t *mapp = m.mapp;
     tpitch_current = m.tpitch_current;
-    const pixel_t *prvppf = m.prvppf, *prvnnf = m.prvnnf;
-    const pixel_t *nxtppf = m.nxtppf, *nxtnnf = m.nxtnnf;
 
     // back to byte pointers
       if ((match1 >= 3 && field == 1) || (match1 < 3 && field != 1))
@@ -1339,9 +1327,9 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
           map_pitch, Height, Width, tpitch_current, bits_per_pixel);
       else
         buildDiffMapPlane_Planar<pixel_t>(
-          reinterpret_cast<const uint8_t*>(prvnf),
-          reinterpret_cast<const uint8_t*>(nxtnf),
-          mapn,
+          reinterpret_cast<const uint8_t*>(prvpf + prvf_pitch),
+          reinterpret_cast<const uint8_t*>(nxtpf + nxtf_pitch),
+          mapp + map_pitch,
           prvf_pitch * sizeof(pixel_t),
           nxtf_pitch * sizeof(pixel_t),
           map_pitch, Height, Width, tpitch_current, bits_per_pixel);
@@ -1357,12 +1345,12 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
         {
           for (int x = startx; x < stopx; x += incl)
           {
-            int eax = (mapp[x] << 3) + mapn[x]; // diff from prev asm block (at buildDiffMapPlane2): <<3 instead of <<2
+            int eax = (mapp[x] << 3) + mapp[x + map_pitch]; // diff from prev asm block (at buildDiffMapPlane2): <<3 instead of <<2
             if ((eax & 0xFF) == 0)
               continue;
 
-            int a_curr = curpf[x] + (curf[x] << 2) + curnf[x];
-            int a_prev = 3 * (prvpf[x] + prvnf[x]);
+            int a_curr = curf[x - curf_pitch] + (curf[x] << 2) + curf[x + curf_pitch];
+            int a_prev = 3 * (prvpf[x] + prvpf[x + prvf_pitch]);
             int diff_p_c = abs(a_prev - a_curr);
             if (diff_p_c > Const23) {
               if ((eax & 9) != 0) // diff from previous similar asm block: condition
@@ -1374,7 +1362,7 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
                   accumPml += diff_p_c;
               }
             }
-            int a_next = 3 * (nxtpf[x] + nxtnf[x]);
+            int a_next = 3 * (nxtpf[x] + nxtpf[x + nxtf_pitch]);
             int diff_n_c = abs(a_next - a_curr);
             if (diff_n_c > Const23) {
               if ((eax & 9) != 0) // diff from previous similar asm block: condition
@@ -1390,8 +1378,8 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
             // additional difference from TFM 1144
             if ((eax & 56) != 0) {
 
-              a_prev = prvppf[x] + (prvpf[x] << 2) + prvnf[x];
-              a_curr = 3 * (curpf[x] + curf[x]);
+              a_prev = prvpf[x - prvf_pitch] + (prvpf[x] << 2) + prvpf[x + prvf_pitch];
+              a_curr = 3 * (curf[x - curf_pitch] + curf[x]);
               diff_p_c = abs(a_prev - a_curr);
               if (diff_p_c > Const23) {
                 if ((eax & 8) != 0) // diff from previous similar asm block: condition
@@ -1403,7 +1391,7 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
                     accumPml += diff_p_c;
                 }
               }
-              a_next = nxtppf[x] + (nxtpf[x] << 2) + nxtnf[x]; // really! not 3*
+              a_next = nxtpf[x - nxtf_pitch] + (nxtpf[x] << 2) + nxtpf[x + nxtf_pitch]; // really! not 3*
               diff_n_c = abs(a_next - a_curr);
               if (diff_n_c > Const23) {
                 if ((eax & 8) != 0) // diff: &8 instead of &9
@@ -1421,16 +1409,9 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
 
         mapp += map_pitch;
         prvpf += prvf_pitch;
-        curpf += curf_pitch;
-        prvnf += prvf_pitch;
         curf += curf_pitch;
         nxtpf += nxtf_pitch;
-        curnf += curf_pitch;
-        nxtnf += nxtf_pitch;
-        mapn += map_pitch;
 
-        prvppf += prvf_pitch;
-        nxtppf += nxtf_pitch;
       }
     }
     else {
@@ -1443,12 +1424,12 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
         {
           for (int x = startx; x < stopx; x += incl)
           {
-            int eax = (mapp[x] << 3) + mapn[x]; // diff from prev asm block (at buildDiffMapPlane2): <<3 instead of <<2
+            int eax = (mapp[x] << 3) + mapp[x + map_pitch]; // diff from prev asm block (at buildDiffMapPlane2): <<3 instead of <<2
             if ((eax & 0xFF) == 0)
               continue;
 
-            int a_curr = curpf[x] + (curf[x] << 2) + curnf[x];
-            int a_prev = 3 * (prvpf[x] + prvnf[x]);
+            int a_curr = curf[x - curf_pitch] + (curf[x] << 2) + curf[x + curf_pitch];
+            int a_prev = 3 * (prvpf[x] + prvpf[x + prvf_pitch]);
             int diff_p_c = abs(a_prev - a_curr);
             if (diff_p_c > Const23) {
               if ((eax & 9) != 0) // diff from previous similar asm block: condition
@@ -1460,7 +1441,7 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
                   accumPml += diff_p_c;
               }
             }
-            int a_next = 3 * (nxtpf[x] + nxtnf[x]); // L2008
+            int a_next = 3 * (nxtpf[x] + nxtpf[x + nxtf_pitch]); // L2008
             int diff_n_c = abs(a_next - a_curr);
             if (diff_n_c > Const23) {
               if ((eax & 9) != 0) // diff from previous similar asm block: condition
@@ -1485,8 +1466,8 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
             // mask 8/16/32 -> 1/2/4
             if ((eax & 7) != 0) { // 1.0.12: diff: &7 instead of &56 L2036
 
-              a_prev = prvpf[x] + (prvnf[x] << 2) + prvnnf[x];
-              a_curr = 3 * (curf[x] + curnf[x]);
+              a_prev = prvpf[x] + (prvpf[x + prvf_pitch] << 2) + prvpf[x + 2 * prvf_pitch];
+              a_curr = 3 * (curf[x] + curf[x + curf_pitch]);
               diff_p_c = abs(a_prev - a_curr);
               if (diff_p_c > Const23) {
                 if ((eax & 1) != 0) // diff: &1 instead of &8
@@ -1499,7 +1480,7 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
                 }
               }
               //int a_next = *(nxtppf + ebx) + (*(nxtpf + ebx) << 2) + *(nxtnf + ebx); // really! not 3*
-              a_next = nxtpf[x] + (nxtnf[x] << 2) + nxtnnf[x]; // really! not 3* L2075
+              a_next = nxtpf[x] + (nxtpf[x + nxtf_pitch] << 2) + nxtpf[x + 2 * nxtf_pitch]; // really! not 3* L2075
               diff_n_c = abs(a_next - a_curr);
               if (diff_n_c > Const23) { // L2088
                 if ((eax & 1) != 0) // diff: &1 instead of &8
@@ -1517,15 +1498,8 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
 
         mapp += map_pitch;
         prvpf += prvf_pitch;
-        curpf += curf_pitch;
-        prvnf += prvf_pitch;
         curf += curf_pitch;
-        prvnnf += prvf_pitch; // 1.0.12
         nxtpf += nxtf_pitch;
-        curnf += curf_pitch;
-        nxtnf += nxtf_pitch;
-        nxtnnf += nxtf_pitch;
-        mapn += map_pitch;
 
         // not used prvppf += prvf_pitch;
         // not used nxtppf += nxtf_pitch;

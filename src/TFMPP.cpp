@@ -189,8 +189,6 @@ void TFMPP::buildMotionMask_core(const VSFrame *prv, const VSFrame *src, const V
     const int plane = b;
     const pixel_t *prvpp = reinterpret_cast<const pixel_t *>(vsapi->getReadPtr(prv, plane));
     const ptrdiff_t prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
-    const pixel_t*prvp = prvpp + prv_pitch;
-    const pixel_t*prvpn = prvp + prv_pitch;
 
     const pixel_t *srcpp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
     const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
@@ -198,15 +196,11 @@ void TFMPP::buildMotionMask_core(const VSFrame *prv, const VSFrame *src, const V
     const int width = vsapi->getFrameWidth(src, plane);
     const int height = vsapi->getFrameHeight(src, plane);
 
-    const pixel_t *srcp = srcpp + src_pitch;
-    const pixel_t *srcpn = srcp + src_pitch;
 
     const pixel_t *nxtpp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
     const ptrdiff_t nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
-    const pixel_t *nxtp = nxtpp + nxt_pitch;
-    const pixel_t *nxtpn = nxtp + nxt_pitch;
 
-    uint8_t *maskw = vsapi->getWritePtr(mask, b);
+    uint8_t *__restrict maskw = vsapi->getWritePtr(mask, b);
     const ptrdiff_t msk_pitch = vsapi->getStride(mask, b);
 
     maskw += msk_pitch;
@@ -221,15 +215,11 @@ void TFMPP::buildMotionMask_core(const VSFrame *prv, const VSFrame *src, const V
         {
           for (int x = 0; x < width; ++x)
           {
-            if (!(abs(prvpp[x] - srcpp[x]) > mthresh_scaled || abs(prvp[x] - srcp[x]) > mthresh_scaled ||
-              abs(prvpn[x] - srcpn[x]) > mthresh_scaled)) maskw[x] = 0;
+            if (!(abs(prvpp[x] - srcpp[x]) > mthresh_scaled || abs(prvpp[x + prv_pitch] - srcpp[x + src_pitch]) > mthresh_scaled ||
+              abs(prvpp[x + 2 * prv_pitch] - srcpp[x + 2 * src_pitch]) > mthresh_scaled)) maskw[x] = 0;
           }
           prvpp += prv_pitch;
-          prvp += prv_pitch;
-          prvpn += prv_pitch;
           srcpp += src_pitch;
-          srcp += src_pitch;
-          srcpn += src_pitch;
           maskw += msk_pitch;
         }
       }
@@ -242,15 +232,11 @@ void TFMPP::buildMotionMask_core(const VSFrame *prv, const VSFrame *src, const V
         {
           for (int x = 0; x < width; ++x)
           {
-            if (!(abs(nxtpp[x] - srcpp[x]) > mthresh_scaled || abs(nxtp[x] - srcp[x]) > mthresh_scaled ||
-              abs(nxtpn[x] - srcpn[x]) > mthresh_scaled)) maskw[x] = 0;
+            if (!(abs(nxtpp[x] - srcpp[x]) > mthresh_scaled || abs(nxtpp[x + nxt_pitch] - srcpp[x + src_pitch]) > mthresh_scaled ||
+              abs(nxtpp[x + 2 * nxt_pitch] - srcpp[x + 2 * src_pitch]) > mthresh_scaled)) maskw[x] = 0;
           }
           srcpp += src_pitch;
-          srcp += src_pitch;
-          srcpn += src_pitch;
           nxtpp += nxt_pitch;
-          nxtp += nxt_pitch;
-          nxtpn += nxt_pitch;
           maskw += msk_pitch;
         }
       }
@@ -264,25 +250,19 @@ void TFMPP::buildMotionMask_core(const VSFrame *prv, const VSFrame *src, const V
         {
           for (int x = 0; x < width; ++x)
           {
-            if (!(((abs(prvp[x] - srcp[x]) > mthresh_scaled) && (abs(nxtpp[x] - srcpp[x]) > mthresh_scaled ||
-              abs(nxtp[x] - srcp[x]) > mthresh_scaled || abs(nxtpn[x] - srcpn[x]) > mthresh_scaled)) ||
-              ((abs(nxtp[x] - srcp[x]) > mthresh_scaled) && (abs(prvpp[x] - srcpp[x]) > mthresh_scaled ||
-                abs(prvp[x] - srcp[x]) > mthresh_scaled || abs(prvpn[x] - srcpn[x]) > mthresh_scaled)) ||
-                (abs(prvpp[x] - srcpp[x]) > mthresh_scaled && abs(prvpn[x] - srcpn[x]) > mthresh_scaled &&
-              (abs(nxtpp[x] - srcpp[x]) > mthresh_scaled || abs(nxtpn[x] - srcpn[x]) > mthresh_scaled)) ||
-                  ((abs(prvpp[x] - srcpp[x]) > mthresh_scaled || abs(prvpn[x] - srcpn[x]) > mthresh_scaled) &&
-                    abs(nxtpp[x] - srcpp[x]) > mthresh_scaled && abs(nxtpn[x] - srcpn[x]) > mthresh_scaled)))
+            if (!(((abs(prvpp[x + prv_pitch] - srcpp[x + src_pitch]) > mthresh_scaled) && (abs(nxtpp[x] - srcpp[x]) > mthresh_scaled ||
+              abs(nxtpp[x + nxt_pitch] - srcpp[x + src_pitch]) > mthresh_scaled || abs(nxtpp[x + 2 * nxt_pitch] - srcpp[x + 2 * src_pitch]) > mthresh_scaled)) ||
+              ((abs(nxtpp[x + nxt_pitch] - srcpp[x + src_pitch]) > mthresh_scaled) && (abs(prvpp[x] - srcpp[x]) > mthresh_scaled ||
+                abs(prvpp[x + prv_pitch] - srcpp[x + src_pitch]) > mthresh_scaled || abs(prvpp[x + 2 * prv_pitch] - srcpp[x + 2 * src_pitch]) > mthresh_scaled)) ||
+                (abs(prvpp[x] - srcpp[x]) > mthresh_scaled && abs(prvpp[x + 2 * prv_pitch] - srcpp[x + 2 * src_pitch]) > mthresh_scaled &&
+              (abs(nxtpp[x] - srcpp[x]) > mthresh_scaled || abs(nxtpp[x + 2 * nxt_pitch] - srcpp[x + 2 * src_pitch]) > mthresh_scaled)) ||
+                  ((abs(prvpp[x] - srcpp[x]) > mthresh_scaled || abs(prvpp[x + 2 * prv_pitch] - srcpp[x + 2 * src_pitch]) > mthresh_scaled) &&
+                    abs(nxtpp[x] - srcpp[x]) > mthresh_scaled && abs(nxtpp[x + 2 * nxt_pitch] - srcpp[x + 2 * src_pitch]) > mthresh_scaled)))
               maskw[x] = 0;
           }
           prvpp += prv_pitch;
-          prvp += prv_pitch;
-          prvpn += prv_pitch;
           srcpp += src_pitch;
-          srcp += src_pitch;
-          srcpn += src_pitch;
           nxtpp += nxt_pitch;
-          nxtp += nxt_pitch;
-          nxtpn += nxt_pitch;
           maskw += msk_pitch;
         }
       }
@@ -758,9 +738,9 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
   const int HeightY = vsapi->getFrameHeight(src, 0);
   const int HeightUV = vsapi->getFrameHeight(src, 2);
   
-  pixel_t *dstpY = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 0));
-  pixel_t *dstpV = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 2));
-  pixel_t *dstpU = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 1));
+  pixel_t *__restrict dstpY = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 0));
+  pixel_t *__restrict dstpV = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 2));
+  pixel_t *__restrict dstpU = reinterpret_cast<pixel_t*>(vsapi->getWritePtr(dst, 1));
   ptrdiff_t dst_pitchY = vsapi->getStride(dst, 0) / sizeof(pixel_t);
   ptrdiff_t dst_pitchUV = vsapi->getStride(dst, 2) / sizeof(pixel_t);
 
@@ -786,15 +766,6 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
   mask_pitchY <<= 1;
   mask_pitchUV <<= 1;
 
-  const pixel_t *srcppY = srcpY - src_pitchY;
-  const pixel_t *srcpppY = srcppY - src_pitchY;
-  const pixel_t *srcpnY = srcpY + src_pitchY;
-  const pixel_t *srcppV = srcpV - src_pitchUV;
-  const pixel_t *srcpppV = srcppV - src_pitchUV;
-  const pixel_t *srcpnV = srcpV + src_pitchUV;
-  const pixel_t *srcppU = srcpU - src_pitchUV;
-  const pixel_t *srcpppU = srcppU - src_pitchUV;
-  const pixel_t *srcpnU = srcpU + src_pitchUV;
   int stopx = WidthY;
   int startxuv = 0;
   int x, y;
@@ -823,35 +794,35 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
         if (y > 2 && y < HeightY - 3 && x>3 && x < WidthY - 4)
         {
           // stay in safe 32 bit int by using 8 bit normalized data
-          Iy1 = (-srcpY[x - 1] - srcpY[x] - srcpY[x] - srcpY[x + 1] + srcpppY[x - 1] + srcpppY[x] + srcpppY[x] + srcpppY[x + 1]) >> bitshift_to_8;
-          Iy2 = (-srcpnY[x - 1] - srcpnY[x] - srcpnY[x] - srcpnY[x + 1] + srcppY[x - 1] + srcppY[x] + srcppY[x] + srcppY[x + 1]) >> bitshift_to_8;
-          Ix1 = (srcpppY[x + 1] + srcppY[x + 1] + srcppY[x + 1] + srcpY[x + 1] - srcpppY[x - 1] - srcppY[x - 1] - srcppY[x - 1] - srcpY[x - 1]) >> bitshift_to_8;
-          Ix2 = (srcppY[x + 1] + srcpY[x + 1] + srcpY[x + 1] + srcpnY[x + 1] - srcppY[x - 1] - srcpY[x - 1] - srcpY[x - 1] - srcpnY[x - 1]) >> bitshift_to_8;
+          Iy1 = (-srcpY[x - 1] - srcpY[x] - srcpY[x] - srcpY[x + 1] + srcpY[x - 1 - 2 * src_pitchY] + srcpY[x - 2 * src_pitchY] + srcpY[x - 2 * src_pitchY] + srcpY[x + 1 - 2 * src_pitchY]) >> bitshift_to_8;
+          Iy2 = (-srcpY[x - 1 + src_pitchY] - srcpY[x + src_pitchY] - srcpY[x + src_pitchY] - srcpY[x + 1 + src_pitchY] + srcpY[x - 1 - src_pitchY] + srcpY[x - src_pitchY] + srcpY[x - src_pitchY] + srcpY[x + 1 - src_pitchY]) >> bitshift_to_8;
+          Ix1 = (srcpY[x + 1 - 2 * src_pitchY] + srcpY[x + 1 - src_pitchY] + srcpY[x + 1 - src_pitchY] + srcpY[x + 1] - srcpY[x - 1 - 2 * src_pitchY] - srcpY[x - 1 - src_pitchY] - srcpY[x - 1 - src_pitchY] - srcpY[x - 1]) >> bitshift_to_8;
+          Ix2 = (srcpY[x + 1 - src_pitchY] + srcpY[x + 1] + srcpY[x + 1] + srcpY[x + 1 + src_pitchY] - srcpY[x - 1 - src_pitchY] - srcpY[x - 1] - srcpY[x - 1] - srcpY[x - 1 + src_pitchY]) >> bitshift_to_8;
           edgeS1 = Ix1 * Ix1 + Iy1 * Iy1;
           edgeS2 = Ix2 * Ix2 + Iy2 * Iy2;
           if (edgeS1 < 1600 && edgeS2 < 1600)
           {
-            dstpY[x] = (srcppY[x] + srcpY[x] + 1) >> 1;
+            dstpY[x] = (srcpY[x - src_pitchY] + srcpY[x] + 1) >> 1;
             continue;
           }
           constexpr int Const10 = 10 << bitshift_to_8;
-          if (abs(srcppY[x] - srcpY[x]) < Const10 && (edgeS1 < 1600 || edgeS2 < 1600))
+          if (abs(srcpY[x - src_pitchY] - srcpY[x]) < Const10 && (edgeS1 < 1600 || edgeS2 < 1600))
           {
-            dstpY[x] = (srcppY[x] + srcpY[x] + 1) >> 1;
+            dstpY[x] = (srcpY[x - src_pitchY] + srcpY[x] + 1) >> 1;
             continue;
           }
           // stay in safe 32 bit int by using 8 bit normalized data
-          sum = (srcppY[x - 1] + srcppY[x] + srcppY[x + 1] + srcpY[x - 1] + srcpY[x] + srcpY[x + 1]) >> bitshift_to_8;
+          sum = (srcpY[x - 1 - src_pitchY] + srcpY[x - src_pitchY] + srcpY[x + 1 - src_pitchY] + srcpY[x - 1] + srcpY[x] + srcpY[x + 1]) >> bitshift_to_8;
           sumsq =
-            square(srcppY[x - 1] >> bitshift_to_8) +
-            square(srcppY[x] >> bitshift_to_8) +
-            square(srcppY[x + 1] >> bitshift_to_8) +
+            square(srcpY[x - 1 - src_pitchY] >> bitshift_to_8) +
+            square(srcpY[x - src_pitchY] >> bitshift_to_8) +
+            square(srcpY[x + 1 - src_pitchY] >> bitshift_to_8) +
             square(srcpY[x - 1] >> bitshift_to_8) +
             square(srcpY[x] >> bitshift_to_8) +
             square(srcpY[x + 1] >> bitshift_to_8);
           if (6 * sumsq - square(sum) < 432)
           {
-            dstpY[x] = (srcppY[x] + srcpY[x] + 1) >> 1;
+            dstpY[x] = (srcpY[x - src_pitchY] + srcpY[x] + 1) >> 1;
             continue;
           }
           if (Ix1 == 0) dir1 = 3.1415926;
@@ -880,7 +851,7 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
             if (edgeS1 >= 5000 && edgeS2 >= 5000)
             {
               // stay in safe 32 bit int by using 8 bit normalized data
-              Iye = (-srcpY[x - 1] - srcpY[x] - srcpY[x] - srcpY[x + 1] + srcppY[x - 1] + srcppY[x] + srcppY[x] + srcppY[x + 1]) >> bitshift_to_8;
+              Iye = (-srcpY[x - 1] - srcpY[x] - srcpY[x] - srcpY[x + 1] + srcpY[x - 1 - src_pitchY] + srcpY[x - src_pitchY] + srcpY[x - src_pitchY] + srcpY[x + 1 - src_pitchY]) >> bitshift_to_8;
               if ((Iy1*Iye > 0) && (Iy2*Iye < 0)) dir = dir1;
               else if ((Iy1*Iye < 0) && (Iy2*Iye > 0)) dir = dir2;
               else
@@ -903,13 +874,13 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
             if (aF > 2.50f)
             {
               temp1 = temp2 = srcpY[x];
-              temp = cubicInt<bits_per_pixel>(srcpppY[x], srcppY[x], srcpY[x], srcpnY[x]);
+              temp = cubicInt<bits_per_pixel>(srcpY[x - 2 * src_pitchY], srcpY[x - src_pitchY], srcpY[x], srcpY[x + src_pitchY]);
             }
             else if (aF >= 2.0f)
             {
-              temp1 = srcppY[x + s * 4];
+              temp1 = srcpY[x + s * 4 - src_pitchY];
               temp2 = srcpY[x - s * 4];
-              temp = (srcppY[x + s * 4] + srcpY[x - s * 4] + 1) >> 1;
+              temp = (srcpY[x + s * 4 - src_pitchY] + srcpY[x - s * 4] + 1) >> 1;
             }
             else
             {
@@ -917,9 +888,9 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
               const double w = aF - k * 0.5;
               const double w2 = (k + 1) * 0.5 - aF;
               const int hi = s * (k + 1), lo = s * k;
-              temp1 = (int)(w*(srcppY[x + hi]) + w2*(srcppY[x + lo]) + 0.5f);
+              temp1 = (int)(w*(srcpY[x + hi - src_pitchY]) + w2*(srcpY[x + lo - src_pitchY]) + 0.5f);
               temp2 = (int)(w*(srcpY[x - hi]) + w2*(srcpY[x - lo]) + 0.5f);
-              temp = (int)(w*(srcppY[x + hi] + srcpY[x - hi]) + w2*(srcppY[x + lo] + srcpY[x - lo]) + 0.5f);
+              temp = (int)(w*(srcpY[x + hi - src_pitchY] + srcpY[x - hi]) + w2*(srcpY[x + lo - src_pitchY] + srcpY[x - lo]) + 0.5f);
             }
           }
 
@@ -927,11 +898,11 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
           constexpr int Const25 = 25 << bitshift_to_8;
           constexpr int Const60 = 60 << bitshift_to_8;
 
-          minN = std::min(srcppY[x], srcpY[x]) - Const25;
-          maxN = std::max(srcppY[x], srcpY[x]) + Const25;
-          if (abs(temp1 - temp2) > Const20 || abs(srcppY[x] + srcpY[x] - temp - temp) > Const60 || temp < minN || temp > maxN)
+          minN = std::min(srcpY[x - src_pitchY], srcpY[x]) - Const25;
+          maxN = std::max(srcpY[x - src_pitchY], srcpY[x]) + Const25;
+          if (abs(temp1 - temp2) > Const20 || abs(srcpY[x - src_pitchY] + srcpY[x] - temp - temp) > Const60 || temp < minN || temp > maxN)
           {
-            temp = cubicInt<bits_per_pixel>(srcpppY[x], srcppY[x], srcpY[x], srcpnY[x]);
+            temp = cubicInt<bits_per_pixel>(srcpY[x - 2 * src_pitchY], srcpY[x - src_pitchY], srcpY[x], srcpY[x + src_pitchY]);
           }
           else {
             // clamp to valid. cubicint clamps O.K.
@@ -943,15 +914,12 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
         }
         else
         {
-          if (y<3 || y>HeightY - 4) dstpY[x] = ((srcpY[x] + srcppY[x] + 1) >> 1);
-          else dstpY[x] = cubicInt<bits_per_pixel>(srcpppY[x], srcppY[x], srcpY[x], srcpnY[x]);
+          if (y<3 || y>HeightY - 4) dstpY[x] = ((srcpY[x] + srcpY[x - src_pitchY] + 1) >> 1);
+          else dstpY[x] = cubicInt<bits_per_pixel>(srcpY[x - 2 * src_pitchY], srcpY[x - src_pitchY], srcpY[x], srcpY[x + src_pitchY]);
         }
       }
     }
-    srcpppY = srcppY;
-    srcppY = srcpY;
-    srcpY = srcpnY;
-    srcpnY += src_pitchY;
+  srcpY += src_pitchY;
     maskpY += mask_pitchY;
     dstpY += dst_pitchY;
   }
@@ -961,23 +929,17 @@ void TFMPP::elaDeintPlanar(VSFrame *dst, const VSFrame *mask, const VSFrame *src
     {
       if (nomask || maskpV[x] == 0xFF)
       {
-        if (y<3 || y>HeightUV - 4) dstpV[x] = ((srcpV[x] + srcppV[x] + 1) >> 1);
-        else dstpV[x] = cubicInt<bits_per_pixel>(srcpppV[x], srcppV[x], srcpV[x], srcpnV[x]);
+        if (y<3 || y>HeightUV - 4) dstpV[x] = ((srcpV[x] + srcpV[x - src_pitchUV] + 1) >> 1);
+        else dstpV[x] = cubicInt<bits_per_pixel>(srcpV[x - 2 * src_pitchUV], srcpV[x - src_pitchUV], srcpV[x], srcpV[x + src_pitchUV]);
       }
       if (nomask || maskpU[x] == 0xFF)
       {
-        if (y<3 || y>HeightUV - 4) dstpU[x] = ((srcpU[x] + srcppU[x] + 1) >> 1);
-        else dstpU[x] = cubicInt<bits_per_pixel>(srcpppU[x], srcppU[x], srcpU[x], srcpnU[x]);
+        if (y<3 || y>HeightUV - 4) dstpU[x] = ((srcpU[x] + srcpU[x - src_pitchUV] + 1) >> 1);
+        else dstpU[x] = cubicInt<bits_per_pixel>(srcpU[x - 2 * src_pitchUV], srcpU[x - src_pitchUV], srcpU[x], srcpU[x + src_pitchUV]);
       }
     }
-    srcpppV = srcppV;
-    srcppV = srcpV;
-    srcpV = srcpnV;
-    srcpnV += src_pitchUV;
-    srcpppU = srcppU;
-    srcppU = srcpU;
-    srcpU = srcpnU;
-    srcpnU += src_pitchUV;
+  srcpV += src_pitchUV;
+  srcpU += src_pitchUV;
     maskpV += mask_pitchUV;
     maskpU += mask_pitchUV;
     dstpV += dst_pitchUV;
@@ -1030,7 +992,7 @@ void TFMPP::maskClip2(const VSFrame *src, const VSFrame *deint, const VSFrame *m
 
 template<typename pixel_t>
 void maskClip2_C(const uint8_t* srcp, const uint8_t* dntp,
-  const uint8_t* maskp, uint8_t* dstp, ptrdiff_t src_pitch, ptrdiff_t dnt_pitch,
+  const uint8_t* maskp, uint8_t* __restrict dstp, ptrdiff_t src_pitch, ptrdiff_t dnt_pitch,
   ptrdiff_t msk_pitch, ptrdiff_t dst_pitch, int width, int height)
 {
   for (int y = 0; y < height; ++y)
