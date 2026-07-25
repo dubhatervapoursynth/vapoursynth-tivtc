@@ -85,26 +85,26 @@ const VSFrame *TFM::finishFrame(FrameMatchState &st, bool d2vfilm, bool fromOvr)
     char buft[20];
     if (st.mics[st.fmatch] < 0) snprintf(buft, sizeof(buft), "N/A");
     else snprintf(buft, sizeof(buft), "%d", st.mics[st.fmatch]);
-    logInfo(vsapi, vscore, "TFM:  frame %d  - final match = %c %s  MIC = %s", st.n, MTC(st.fmatch),
+    logInfo(vsapi, vscore, "TFM:  frame {}  - final match = {} {}  MIC = {}", st.n, matchChar(st.fmatch),
       fromOvr && st.d2vmatch ? "(D2V)" : fromOvr ? "(OVR)" : "", buft);
     if (micout > 0 || (micmatching > 0 && st.mics[0] != -20 && st.mics[1] != -20 && st.mics[2] != -20
       && st.mics[3] != -20 && st.mics[4] != -20))
     {
       if (micout > 1 || micmatching > 0)
-        logInfo(vsapi, vscore, "TFM:  frame %d  - mics: p = %d  c = %d  n = %d  b = %d  u = %d",
+        logInfo(vsapi, vscore, "TFM:  frame {}  - mics: p = {}  c = {}  n = {}  b = {}  u = {}",
           st.n, st.mics[0], st.mics[1], st.mics[2], st.mics[3], st.mics[4]);
       else
-        logInfo(vsapi, vscore, "TFM:  frame %d  - mics: p = %d  c = %d  n = %d",
+        logInfo(vsapi, vscore, "TFM:  frame {}  - mics: p = {}  c = {}  n = {}",
           st.n, st.mics[0], st.mics[1], st.mics[2]);
     }
-    logInfo(vsapi, vscore, "TFM:  frame %d  - mode = %d  field = %d  order = %d  d2vfilm = %c",
+    logInfo(vsapi, vscore, "TFM:  frame {}  - mode = {}  field = {}  order = {}  d2vfilm = {}",
       st.n, mode, field, order, d2vfilm ? 'T' : 'F');
     if (st.combed != -1)
     {
-      if (st.combed == 1) logInfo(vsapi, vscore, "TFM:  frame %d  - CLEAN FRAME  (forced!)", st.n);
-      else if (st.combed == 5) logInfo(vsapi, vscore, "TFM:  frame %d  - COMBED FRAME  (forced!)", st.n);
-      else if (st.combed == 0) logInfo(vsapi, vscore, "TFM:  frame %d  - CLEAN FRAME", st.n);
-      else logInfo(vsapi, vscore, "TFM:  frame %d  - COMBED FRAME", st.n);
+      if (st.combed == 1) logInfo(vsapi, vscore, "TFM:  frame {}  - CLEAN FRAME  (forced!)", st.n);
+      else if (st.combed == 5) logInfo(vsapi, vscore, "TFM:  frame {}  - COMBED FRAME  (forced!)", st.n);
+      else if (st.combed == 0) logInfo(vsapi, vscore, "TFM:  frame {}  - CLEAN FRAME", st.n);
+      else logInfo(vsapi, vscore, "TFM:  frame {}  - COMBED FRAME", st.n);
     }
   }
   if (usehints || PP >= 2) putFrameProperties(st.dst, st.fmatch, st.combed, d2vfilm, st.mics);
@@ -545,7 +545,7 @@ const VSFrame *TFM::GetFrame(int n, int activationReason, VSFrameContext *frameC
 
 void TFM::checkmm(int &cmatch, int m1, int m2, VSFrame *dst, int &dfrm, VSFrame *tmp, int &tfrm,
   const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int n,
-  int *blockN, int &xblocks, int *mics)
+  MicArray &blockN, int &xblocks, MicArray &mics)
 {
   if (cmatch != m1)
   {
@@ -593,8 +593,8 @@ void TFM::checkmm(int &cmatch, int m1, int m2, VSFrame *dst, int &dfrm, VSFrame 
     abs(mics[m2] - mics[m1]) >= 30 && mics[m2] < MI)
   {
     if (debug)
-      logInfo(vsapi, vscore, "TFM:  frame %d  - micmatching override:  %c (%d) to %c (%d)", n,
-        MTC(m1), mics[m1], MTC(m2), mics[m2]);
+      logInfo(vsapi, vscore, "TFM:  frame {}  - micmatching override:  {} ({}) to {} ({})", n,
+        matchChar(m1), mics[m1], matchChar(m2), mics[m2]);
     cmatch = m2;
   }
 }
@@ -604,20 +604,18 @@ void TFM::micChange(int n, int m1, int m2, VSFrame *dst, const VSFrame *prv,
   int &combed, int &cfrm) const
 {
   if (debug)
-    logInfo(vsapi, vscore, "TFM:  frame %d  - micmatching override:  %c to %c", n, MTC(m1), MTC(m2));
+    logInfo(vsapi, vscore, "TFM:  frame {}  - micmatching override:  {} to {}", n, matchChar(m1), matchChar(m2));
   fmatch = m2;
   combed = 0;
   createWeaveFrame(dst, prv, src, nxt, m2, cfrm);
 }
 
 void TFM::writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
-  [[maybe_unused]] int blockN, [[maybe_unused]] int xblocks, bool d2vmatch, int *mics, const VSFrame *prv,
+  [[maybe_unused]] int blockN, [[maybe_unused]] int xblocks, bool d2vmatch, const MicArray &mics, const VSFrame *prv,
   const VSFrame *src, const VSFrame *nxt)
 {
     // Doesn't actually display anything, just sets a frame property which text.Text will display.
 
-#define SZ 160
-    char buf[SZ];
 
   if (combed > 1 && PP > 1) return; // TFMPP will display things instead
 
@@ -625,44 +623,41 @@ void TFM::writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
   std::string text = "TFM " VERSION " by tritical\n";
 
   if (PP > 0)
-    snprintf(buf, SZ, "order = %d  field = %d  mode = %d  MI = %d\n", order, field, mode, MI);
+    text += std::format("order = {}  field = {}  mode = {}  MI = {}\n", order, field, mode, MI);
   else
-    snprintf(buf, SZ, "order = %d  field = %d  mode = %d\n", order, field, mode);
-  text += buf;
+    text += std::format("order = {}  field = {}  mode = {}\n", order, field, mode);
 
-  if (!over && !d2vmatch) snprintf(buf, SZ, "frame: %d  match = %c %s\n", n, MTC(fmatch),
-    ((ubsco || mmsco || flags == 5) && checkSceneChange(prv, src, nxt, n)) ? " (SC) " : "");
-  else if (d2vmatch) snprintf(buf, SZ, "frame: %d  match = %c (D2V) %s\n", n, MTC(fmatch),
-    ((ubsco || mmsco || flags == 5) && checkSceneChange(prv, src, nxt, n)) ? " (SC) " : "");
-  else snprintf(buf, SZ, "frame: %d  match = %c (OVR) %s\n", n, MTC(fmatch),
-    ((ubsco || mmsco || flags == 5) && checkSceneChange(prv, src, nxt, n)) ? " (SC) " : "");
-  text += buf;
+  if (!over && !d2vmatch)
+    text += std::format("frame: {}  match = {} {}\n", n, matchChar(fmatch),
+      ((ubsco || mmsco || flags == 5) && checkSceneChange(prv, src, nxt, n)) ? " (SC) " : "");
+  else if (d2vmatch)
+    text += std::format("frame: {}  match = {} (D2V) {}\n", n, matchChar(fmatch),
+      ((ubsco || mmsco || flags == 5) && checkSceneChange(prv, src, nxt, n)) ? " (SC) " : "");
+  else
+    text += std::format("frame: {}  match = {} (OVR) {}\n", n, matchChar(fmatch),
+      ((ubsco || mmsco || flags == 5) && checkSceneChange(prv, src, nxt, n)) ? " (SC) " : "");
 
   if (micout > 0 || (micmatching > 0 && mics[0] != -20 && mics[1] != -20 && mics[2] != -20
     && mics[3] != -20 && mics[4] != -20))
   {
     if (micout == 1 && mics[0] != -20 && mics[1] != -20 && mics[2] != -20 && micmatching == 0)
     {
-      snprintf(buf, SZ, "MICS:  p = %d  c = %d  n = %d\n", mics[0], mics[1], mics[2]);
-      text += buf;
+      text += std::format("MICS:  p = {}  c = {}  n = {}\n", mics[0], mics[1], mics[2]);
     }
     else if ((micout == 2 && mics[0] != -20 && mics[1] != -20 && mics[2] != -20 &&
       mics[3] != -20 && mics[4] != -20) || micmatching > 0)
     {
-      snprintf(buf, SZ, "MICS:  p = %d  c = %d  n = %d\n", mics[0], mics[1], mics[2]);
-      text += buf;
-      snprintf(buf, SZ, "       b = %d  u = %d\n", mics[3], mics[4]);
-      text += buf;
+      text += std::format("MICS:  p = {}  c = {}  n = {}\n", mics[0], mics[1], mics[2]);
+      text += std::format("       b = {}  u = {}\n", mics[3], mics[4]);
     }
   }
 
   if (combed != -1)
   {
-    if (combed == 1) snprintf(buf, SZ, "PP = %d  CLEAN FRAME (forced!) ", PP);
-    else if (combed == 5) snprintf(buf, SZ, "PP = %d  COMBED FRAME  (forced!) ", PP);
-    else if (combed == 0) snprintf(buf, SZ, "PP = %d  CLEAN FRAME ", PP);
-    else snprintf(buf, SZ, "PP = %d  COMBED FRAME ", PP);
-    text += buf;
+    if (combed == 1) text += std::format("PP = {}  CLEAN FRAME (forced!) ", PP);
+    else if (combed == 5) text += std::format("PP = {}  COMBED FRAME  (forced!) ", PP);
+    else if (combed == 0) text += std::format("PP = {}  CLEAN FRAME ", PP);
+    else text += std::format("PP = {}  COMBED FRAME ", PP);
     if (mics[fmatch] >= 0)
     {
       text += " MIC = ";
@@ -674,10 +669,8 @@ void TFM::writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
 
   if (d2vpercent >= 0.0)
   {
-    snprintf(buf, SZ, "%3.1f%s FILM (D2V)\n", d2vpercent, "%");
-    text += buf;
+    text += std::format("{:3.1f}{} FILM (D2V)\n", d2vpercent, "%");
   }
-#undef SZ
 
   VSMap *props = vsapi->getFramePropertiesRW(dst);
   vsapi->mapSetData(props, PROP_TFMDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);
@@ -745,16 +738,16 @@ void TFM::warnOvrOverrides() const
   }
 
   if (modeSevenAt >= 0)
-    logWarning(vsapi, vscore, "TFM:  ovr file selects mode 7 (first at frame %d) but the filter was "
-      "created with mode=%d, so it did not request the serialised frame delivery mode 7 needs. "
+    logWarning(vsapi, vscore, "TFM:  ovr file selects mode 7 (first at frame {}) but the filter was "
+      "created with mode={}, so it did not request the serialised frame delivery mode 7 needs. "
       "Mode 7 carries its field choice over from the previously produced frame, so the output will "
       "depend on the order frames happen to be requested in. Pass mode=7 to TFM instead.",
       modeSevenAt, mode_origSaved);
 
   if (ppRaiseAt >= 0)
-    logWarning(vsapi, vscore, "TFM:  ovr file raises PP to %d (first at frame %d) but the filter was "
-      "created with PP=%d, so no post-processing filter was added to the graph and the override "
-      "cannot take effect. Pass PP=%d (or higher) to TFM instead.",
+    logWarning(vsapi, vscore, "TFM:  ovr file raises PP to {} (first at frame {}) but the filter was "
+      "created with PP={}, so no post-processing filter was added to the graph and the override "
+      "cannot take effect. Pass PP={} (or higher) to TFM instead.",
       ppRaiseTo, ppRaiseAt, PP_origSaved, ppRaiseTo);
 }
 
@@ -861,7 +854,7 @@ bool TFM::d2vduplicate(int match, int combed, int n)
   return false;
 }
 
-void TFM::fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int mics[5])
+void TFM::fileOut(int match, int combed, bool d2vfilm, int n, int MICount, const MicArray &mics)
 {
   if (moutArray.size() && MICount != -1) moutArray[n] = MICount;
   if (micout > 0 && moutArrayE.size())
@@ -891,7 +884,7 @@ void TFM::fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int m
 
 
 bool TFM::checkCombed(const VSFrame *src, int n, int match,
-  int *blockN, int &xblocksi, int *mics, bool ddebug)
+  MicArray &blockN, int &xblocksi, MicArray &mics, bool ddebug)
 {
     return checkCombedPlanar(src, n, match, blockN, xblocksi, mics, ddebug, vi->format.numPlanes > 1 && chroma);
 }
@@ -899,6 +892,38 @@ bool TFM::checkCombed(const VSFrame *src, int n, int match,
 // One plane's worth of resolved pointers for a compareFields pass: the two match fields, the
 // current field, their immediate neighbours (and, for the slow 2 variant, the ones two rows out),
 // the diff map rows, and the band-exclusion limits.
+// A match code names one field of one frame:
+//   0 (p) prev, 1 (c) current, 2 (n) next  -- the field with the same parity as `field`
+//   3 (b) prev, 4 (u) next                 -- the opposite parity
+// Both match1 and match2 use this same mapping, so the three compareFields variants all share it.
+template<typename pixel_t>
+static void selectMatchField(int match, int field,
+  const pixel_t *prvp, const pixel_t *srcp, const pixel_t *nxtp,
+  ptrdiff_t prv_pitch, ptrdiff_t src_pitch, ptrdiff_t nxt_pitch,
+  const pixel_t *&fieldp, ptrdiff_t &field_pitch)
+{
+  const pixel_t *base;
+  ptrdiff_t pitch;
+  switch (match)
+  {
+  case 0:  base = prvp; pitch = prv_pitch; break;
+  case 1:  base = srcp; pitch = src_pitch; break;
+  case 2:  base = nxtp; pitch = nxt_pitch; break;
+  case 3:  base = prvp; pitch = prv_pitch; break;
+  default: base = nxtp; pitch = nxt_pitch; break; // match == 4; callers only pass 0..4
+  }
+  const int row = match < 3 ? (field == 1 ? 1 : 2) : (field == 1 ? 2 : 1);
+  fieldp = base + row * pitch;
+  field_pitch = pitch << 1;
+}
+
+// match1 additionally decides which parity the woven frame and the diff map start on.
+static inline int curfRow(int match1, int field) { return match1 < 3 ? 3 - field : 2 + field; }
+static inline int mapRow(int match1, int field)
+{
+  return match1 < 3 ? (field == 1 ? 1 : 2) : (field == 1 ? 2 : 1);
+}
+
 template<typename pixel_t>
 struct TFM::MatchPlane
 {
@@ -1042,8 +1067,8 @@ int TFM::decideMatch(int match1, int match2, uint64_t accumPc, uint64_t accumNc,
   {
     // firstRung doubles as the variant name: the slower variants start lower on the ladder
     const char *variant = firstRung == 1 ? "  (SLOW 1)" : firstRung == 0 ? "  (SLOW 2)" : "";
-    logInfo(vsapi, vscore, "TFM:  frame %d  - comparing %c to %c%s", n, MTC(match1), MTC(match2), variant);
-    logInfo(vsapi, vscore, "TFM:  frame %d  - nmatches:  %d vs %d (%3.1f)  mmatches:  %d vs %d (%3.1f)", n,
+    logInfo(vsapi, vscore, "TFM:  frame {}  - comparing {} to {}{}", n, matchChar(match1), matchChar(match2), variant);
+    logInfo(vsapi, vscore, "TFM:  frame {}  - nmatches:  {} vs {} ({:3.1f})  mmatches:  {} vs {} ({:3.1f})", n,
       norm1, norm2, c1, mtn1, mtn2, c2);
   }
 
@@ -1052,37 +1077,6 @@ int TFM::decideMatch(int match1, int match2, uint64_t accumPc, uint64_t accumNc,
   return norm1 > norm2 ? match2 : match1;
 }
 
-// A match code names one field of one frame:
-//   0 (p) prev, 1 (c) current, 2 (n) next  -- the field with the same parity as `field`
-//   3 (b) prev, 4 (u) next                 -- the opposite parity
-// Both match1 and match2 use this same mapping, so the three compareFields variants all share it.
-template<typename pixel_t>
-static void selectMatchField(int match, int field,
-  const pixel_t *prvp, const pixel_t *srcp, const pixel_t *nxtp,
-  ptrdiff_t prv_pitch, ptrdiff_t src_pitch, ptrdiff_t nxt_pitch,
-  const pixel_t *&fieldp, ptrdiff_t &field_pitch)
-{
-  const pixel_t *base;
-  ptrdiff_t pitch;
-  switch (match)
-  {
-  case 0:  base = prvp; pitch = prv_pitch; break;
-  case 1:  base = srcp; pitch = src_pitch; break;
-  case 2:  base = nxtp; pitch = nxt_pitch; break;
-  case 3:  base = prvp; pitch = prv_pitch; break;
-  default: base = nxtp; pitch = nxt_pitch; break; // match == 4; callers only pass 0..4
-  }
-  const int row = match < 3 ? (field == 1 ? 1 : 2) : (field == 1 ? 2 : 1);
-  fieldp = base + row * pitch;
-  field_pitch = pitch << 1;
-}
-
-// match1 additionally decides which parity the woven frame and the diff map start on.
-static inline int curfRow(int match1, int field) { return match1 < 3 ? 3 - field : 2 + field; }
-static inline int mapRow(int match1, int field)
-{
-  return match1 < 3 ? (field == 1 ? 1 : 2) : (field == 1 ? 2 : 1);
-}
 
 template<typename pixel_t>
 int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
@@ -1662,8 +1656,8 @@ bool TFM::checkSceneChange_core(const VSFrame *prv, const VSFrame *src, const VS
   sclast.frame = n;
   sclast.sc = (diffp > diffmaxsc || diffn > diffmaxsc);
   if (debug)
-    logInfo(vsapi, vscore, "TFM:  frame %d  - diffp = %" PRIu64 "   diffn = %" PRIu64
-      "  diffmaxsc = %" PRIu64 "  %c", n, diffp, diffn, diffmaxsc, sclast.sc ? 'T' : 'F');
+    logInfo(vsapi, vscore, "TFM:  frame {}  - diffp = {}   diffn = {}"
+      "  diffmaxsc = {}  {}", n, diffp, diffn, diffmaxsc, sclast.sc ? 'T' : 'F');
   return sclast.sc;
 }
 
@@ -1719,7 +1713,7 @@ void TFM::createWeaveFrame(VSFrame *dst, const VSFrame *prv, const VSFrame *src,
   cfrm = match;
 }
 
-void TFM::putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, const int mics[5]) const
+void TFM::putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, const MicArray &mics) const
 {
     VSMap *props = vsapi->getFramePropertiesRW(dst);
 
@@ -1845,7 +1839,7 @@ void TFM::parseInputFile()
       }
       fieldt = fieldO;
       if (debug)
-        logInfo(vsapi, vscore, "TFM:  successfully opened input file.  Field defaulting to - %s.",
+        logInfo(vsapi, vscore, "TFM:  successfully opened input file.  Field defaulting to - {}.",
           fieldt == 0 ? "bottom" : "top");
       firstLine = 0;
       while (fgets(linein, 1024, f.get()) != nullptr)
@@ -1862,7 +1856,7 @@ void TFM::parseInputFile()
             if (_strnicmp(linein, "field = top", 11) == 0) { fieldt = 1; }
             else if (_strnicmp(linein, "field = bottom", 14) == 0) { fieldt = 0; }
             if (debug)
-              logInfo(vsapi, vscore, "TFM:  detected field for input file - %s.",
+              logInfo(vsapi, vscore, "TFM:  detected field for input file - {}.",
                 fieldt == 0 ? "bottom" : "top");
           }
         }
@@ -2056,7 +2050,7 @@ void TFM::parseOvrFile()
       if ((f = decltype (f)(tivtc_fopen(ovr.c_str(), "r"), &fclose)) != nullptr)
       {
         if (debug)
-          logInfo(vsapi, vscore, "TFM:  successfully opened ovr file.  Field defaulting to - %s.",
+          logInfo(vsapi, vscore, "TFM:  successfully opened ovr file.  Field defaulting to - {}.",
             fieldt == 0 ? "bottom" : "top");
         while (fgets(linein, 1024, f.get()) != nullptr)
         {
@@ -2072,7 +2066,7 @@ void TFM::parseOvrFile()
               if (_strnicmp(linein, "field = top", 11) == 0) { fieldt = 1; }
               else if (_strnicmp(linein, "field = bottom", 14) == 0) { fieldt = 0; }
               if (debug)
-                logInfo(vsapi, vscore, "TFM:  detected field for ovr file - %s.",
+                logInfo(vsapi, vscore, "TFM:  detected field for ovr file - {}.",
                   fieldt == 0 ? "bottom" : "top");
             }
           }
@@ -2408,7 +2402,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
 
 
 
-  if (debug) logInfo(vsapi, vscore, "TFM:  %s by tritical", VERSION);
+  if (debug) logInfo(vsapi, vscore, "TFM:  {} by tritical", VERSION);
 
   validateParameters();
 
@@ -2496,17 +2490,14 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
   
   const int ALIGN_BUF = 64;
 
-  // Rounds up the number "n" to the next greater multiple of "align"
-#define ALIGN_NUMBER(n, align) (((n) + (align)-1) & (~((align)-1)))
 
   {
     // tbuffer is 8 or 16 bits wide
     const int pixelsize = vi->format.bytesPerSample;
-    tpitchy = ALIGN_NUMBER(vi->width * pixelsize, ALIGN_BUF);
+    tpitchy = alignUp(vi->width * pixelsize, ALIGN_BUF);
     const int widthUV = vi->format.numPlanes > 1 ? vi->width >> vi->format.subSamplingW : 0;
-    tpitchuv = ALIGN_NUMBER(widthUV * pixelsize, ALIGN_BUF);
+    tpitchuv = alignUp(widthUV * pixelsize, ALIGN_BUF);
   }
-#undef ALIGN_NUMBER
 
   tbuffer.resize((size_t)(vi->height >> 1) * tpitchy);
   // Seed from the resolved field order, not the raw `field` parameter: that is still -1 whenever
@@ -2547,7 +2538,7 @@ TFM::~TFM()
             match = (outArray[h] & 0x07);
             std::string line = std::to_string(h);
             line += ' ';
-            line += (char)(MTC(match));
+            line += (char)(matchChar(match));
             if (outArray[h] & 0x20)
               line += (outArray[h] & 0x10) ? " +" : " -";
             if (outArray[h] & FILE_D2V) line += " 1";
@@ -2692,7 +2683,7 @@ void TFM::generateOvrHelpOutput(FILE *f) const
     if (!count) fprintf(f, "#   none detected\n");
   }
   else fprintf(f, "#   none detected\n");
-  fprintf(f, "#\n#\n# [u, b, AND AGAINST ORDER (%c) MATCHES]\n#\n", MTC(ao));
+  fprintf(f, "#\n#\n# [u, b, AND AGAINST ORDER (%c) MATCHES]\n#\n", matchChar(ao));
   fprintf(f, "#   FORMAT:  frame_number match  or  range_start,range_end match\n#\n");
   if (acount)
   {
@@ -2705,8 +2696,8 @@ void TFM::generateOvrHelpOutput(FILE *f) const
         if (lastf == -1) lastf = temp;
         else if (temp != lastf)
         {
-          if (count == 1) fprintf(f, "#   %d %c\n", i - 1, MTC(lastf));
-          else fprintf(f, "#   %d,%d %c\n", i - count, i - 1, MTC(lastf));
+          if (count == 1) fprintf(f, "#   %d %c\n", i - 1, matchChar(lastf));
+          else fprintf(f, "#   %d,%d %c\n", i - count, i - 1, matchChar(lastf));
           count = 0;
           lastf = temp;
         }
@@ -2714,14 +2705,14 @@ void TFM::generateOvrHelpOutput(FILE *f) const
       }
       else if (count)
       {
-        if (count == 1) fprintf(f, "#   %d %c\n", i - 1, MTC(lastf));
-        else fprintf(f, "#   %d,%d %c\n", i - count, i - 1, MTC(lastf));
+        if (count == 1) fprintf(f, "#   %d %c\n", i - 1, matchChar(lastf));
+        else fprintf(f, "#   %d,%d %c\n", i - count, i - 1, matchChar(lastf));
         count = 0;
         lastf = -1;
       }
     }
-    if (count == 1) fprintf(f, "#   %d %c\n", i - 1, MTC(lastf));
-    else if (count > 1) fprintf(f, "#   %d,%d %c\n", i - count, i - 1, MTC(lastf));
+    if (count == 1) fprintf(f, "#   %d %c\n", i - 1, matchChar(lastf));
+    else if (count > 1) fprintf(f, "#   %d,%d %c\n", i - count, i - 1, matchChar(lastf));
   }
   else fprintf(f, "#   none detected\n");
 }

@@ -696,17 +696,12 @@ void TFMPP::copyField(VSFrame *dst, const VSFrame *src, int field) const
 
 void TFMPP::writeDisplay(VSFrame *dst, int n, int field) const
 {
-#define SZ 160
-    char buf[SZ];
 
     std::string text = "TFMPP " VERSION " by tritical\n";
 
-  snprintf(buf, SZ, "field = %d  PP = %d  mthresh = %d ", field, PP, mthresh);
-  text += buf;
+  text += std::format("field = {}  PP = {}  mthresh = {} ", field, PP, mthresh);
 
-  snprintf(buf, SZ, "frame: %d  (COMBED - DEINTERLACED)! ", n);
-  text += buf;
-#undef SZ
+  text += std::format("frame: {}  (COMBED - DEINTERLACED)! ", n);
 
   VSMap *props = vsapi->getFramePropertiesRW(dst);
   vsapi->mapSetData(props, PROP_TFMDisplay, text.c_str(), (int)text.size(), dtUtf8, maReplace);

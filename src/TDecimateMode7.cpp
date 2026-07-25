@@ -132,12 +132,12 @@ const VSFrame * TDecimate::GetFrameMode7(int n, int activationReason, void **fra
   if (debug)
   {
     logInfo(vsapi, vscore, "TDecimate:  ------------------------------------------");
-    logInfo(vsapi, vscore, "TDecimate:  inframe = %d  useframe = %d  chosen = %d", n, ret, chosen);
-    logInfo(vsapi, vscore, "TDecimate:  prev = %d  curr1 = %d  curr2 = %d  next = %d", prev_f,
+    logInfo(vsapi, vscore, "TDecimate:  inframe = {}  useframe = {}  chosen = {}", n, ret, chosen);
+    logInfo(vsapi, vscore, "TDecimate:  prev = {}  curr1 = {}  curr2 = {}  next = {}", prev_f,
       curr1_f, curr2_f, next_f);
     for (int i = std::max(0, ret - 3); i <= std::min(ret + 3, nfrms); ++i)
     {
-      logInfo(vsapi, vscore, "TDecimate:  %d:  %3.2f  %" PRIu64 "%s%s", i,
+      logInfo(vsapi, vscore, "TDecimate:  {}:  {:3.2f}  {}{}{}", i,
         double(metricsOutArray[i << 1])*100.0 / double(MAX_DIFF),
         metricsOutArray[i << 1], metricsOutArray[i << 1] < same_thresh ? "  (D)" :
         metricsOutArray[i << 1] > diff_thresh ? "  (N)" :
@@ -149,30 +149,22 @@ const VSFrame * TDecimate::GetFrameMode7(int n, int activationReason, void **fra
   std::string body;
   if (display)
   {
-#define SZ 160
-    char buf[SZ] = { 0 };
 
-    snprintf(buf, SZ, "Mode: 7  Rate = %3.6f\n", rate);
-    body += buf;
-    snprintf(buf, SZ, "inframe = %d  useframe = %d  chosen = %d\n", n, ret, chosen);
-    body += buf;
-    snprintf(buf, SZ, "p = %d  c1 = %d  c2 = %d  n = %d\n", prev_f,
+    body += std::format("Mode: 7  Rate = {:3.6f}\n", rate);
+    body += std::format("inframe = {}  useframe = {}  chosen = {}\n", n, ret, chosen);
+    body += std::format("p = {}  c1 = {}  c2 = {}  n = {}\n", prev_f,
       curr1_f, curr2_f, next_f);
-    body += buf;
-    snprintf(buf, SZ, "dt = %3.2f  %" PRIu64 "  vt = %3.2f  %" PRIu64 "\n", dupThresh, same_thresh,
+    body += std::format("dt = {:3.2f}  {}  vt = {:3.2f}  {}\n", dupThresh, same_thresh,
       vidThresh, diff_thresh);
-    body += buf;
 
     for (int i = std::max(0, ret - 3); i <= std::min(ret + 3, nfrms); ++i)
     {
-      snprintf(buf, SZ, "%d:  %3.2f  %" PRIu64 "%s%s\n", i, double(metricsOutArray[i << 1])*100.0 / double(MAX_DIFF),
+      body += std::format("{}:  {:3.2f}  {}{}{}\n", i, double(metricsOutArray[i << 1])*100.0 / double(MAX_DIFF),
         metricsOutArray[i << 1], metricsOutArray[i << 1] < same_thresh ? "  (D)" :
         metricsOutArray[i << 1] > diff_thresh ? "  (N)" :
         aLUT[i] == 2 ? "  (N)" : aLUT[i] == 1 ? "  (S)" :
         aLUT[i] == 0 ? "  (D)" : "", wasChosen(i, n) ? "  *" : "");
-    body += buf;
     }
-#undef SZ
   }
   return chosenFrameWithDisplay(ret, frameCtx, core, body);
 }

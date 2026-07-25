@@ -63,7 +63,7 @@ void TFM::parseD2V()
   if (debug)
   {
     logInfo(vsapi, vscore, "TFM:  successfully opened specified d2v file.");
-    logInfo(vsapi, vscore, "TFM:  %s d2v detected.",
+    logInfo(vsapi, vscore, "TFM:  {} d2v detected.",
       D2Vformat > 9 ? "newest style (dgindex 1.2+)" :
       D2Vformat > 3 ? "new style (dgindex 1.0+)" :
       D2Vformat > 0 ? "new style (dvd2avidg 1.2+)" : "old style (dvd2avi 1.76 or 1.77)");
@@ -81,7 +81,7 @@ void TFM::parseD2V()
     order = tff;
     if (field == -1) field = tff;
     if (debug)
-      logInfo(vsapi, vscore, "TFM:  auto detected field order from d2v is %s.",
+      logInfo(vsapi, vscore, "TFM:  auto detected field order from d2v is {}.",
         order == 1 ? "TFF" : "BFF");
   }
   else if (order != tff)
@@ -619,7 +619,7 @@ int TFM::D2V_fill_d2vfilmarray(const std::vector<int> &array, int frames)
   d2vpercent = double(i - outpattern)*100.0 / double(i);
   if (flags == 0) d2vpercent = -20.0;
   if (debug)
-    logInfo(vsapi, vscore, "TFM:  d2vflags = %d  out_of_pattern = %d  (%3.1f%% FILM)", i, outpattern,
+    logInfo(vsapi, vscore, "TFM:  d2vflags = {}  out_of_pattern = {}  ({:3.1f}% FILM)", i, outpattern,
       d2vpercent);
   if (trimIn.size() && trimArray.size())
   {

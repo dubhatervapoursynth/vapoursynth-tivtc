@@ -213,20 +213,20 @@ template void checkCombedPlanarAnalyze_core<uint16_t>(const VSVideoInfo *vi, int
 
 
 bool TFM::checkCombedPlanar(const VSFrame *src, int n, int match,
-  int *blockN, int &xblocksi, int *mics, bool ddebug, bool _chroma)
+  MicArray &blockN, int &xblocksi, MicArray &mics, bool ddebug, bool _chroma)
 {
   if (mics[match] != -20)
   {
     if (mics[match] > MI)
     {
       if (debug && !ddebug)
-        logInfo(vsapi, vscore, "TFM:  frame %d  - match %c:  Detected As Combed  (ReCheck - not "
-          "processed)! (%d > %d)", n, MTC(match), mics[match], MI);
+        logInfo(vsapi, vscore, "TFM:  frame {}  - match {}:  Detected As Combed  (ReCheck - not "
+          "processed)! ({} > {})", n, matchChar(match), mics[match], MI);
       return true;
     }
     if (debug && !ddebug)
-      logInfo(vsapi, vscore, "TFM:  frame %d  - match %c:  Detected As NOT Combed  (ReCheck - not "
-        "processed)! (%d <= %d)", n, MTC(match), mics[match], MI);
+      logInfo(vsapi, vscore, "TFM:  frame {}  - match {}:  Detected As NOT Combed  (ReCheck - not "
+        "processed)! ({} <= {})", n, matchChar(match), mics[match], MI);
     return false;
   }
 
@@ -273,7 +273,7 @@ static void countCombedRows(const uint8_t *&cmkpp, const uint8_t *&cmkp, const u
 
 template<typename pixel_t>
 bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_unused]] int n, int match,
-  int* blockN, int& xblocksi, int* mics, [[maybe_unused]] bool ddebug, [[maybe_unused]] int bits_per_pixel)
+  MicArray &blockN, int &xblocksi, MicArray &mics, [[maybe_unused]] bool ddebug, [[maybe_unused]] int bits_per_pixel)
 {
 
   const ptrdiff_t cmk_pitch = vsapi->getStride(cmask.get(), 0);
@@ -369,13 +369,13 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
   if (mics[match] > MI)
   {
     if (debug && !ddebug)
-      logInfo(vsapi, vscore, "TFM:  frame %d  - match %c:  Detected As Combed! (%d > %d)",
-        n, MTC(match), mics[match], MI);
+      logInfo(vsapi, vscore, "TFM:  frame {}  - match {}:  Detected As Combed! ({} > {})",
+        n, matchChar(match), mics[match], MI);
     return true;
   }
   if (debug && !ddebug)
-    logInfo(vsapi, vscore, "TFM:  frame %d  - match %c:  Detected As NOT Combed! (%d <= %d)",
-      n, MTC(match), mics[match], MI);
+    logInfo(vsapi, vscore, "TFM:  frame {}  - match {}:  Detected As NOT Combed! ({} <= {})",
+      n, matchChar(match), mics[match], MI);
   return false;
 }
 

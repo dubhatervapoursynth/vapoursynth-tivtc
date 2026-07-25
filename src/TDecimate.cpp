@@ -148,10 +148,10 @@ VSFrame *TDecimate::renderOutputInfo(const OutputInfo *o, VSFrameContext *frameC
     if (debug)
     {
         if (o->type == TwoFramesBlended)
-            logInfo(vsapi, vscore, "TDecimate:  inframe = %d  blending %d (%3.2f) + %d (%3.2f)  %s",
+            logInfo(vsapi, vscore, "TDecimate:  inframe = {}  blending {} ({:3.2f}) + {} ({:3.2f})  {}",
                 o->requested_frame_number, o->f1, o->a1, o->f2, o->a2, o->film ? "film" : "video");
         else
-            logInfo(vsapi, vscore, "TDecimate:  inframe = %d  useframe = %d  %s",
+            logInfo(vsapi, vscore, "TDecimate:  inframe = {}  useframe = {}  {}",
                 o->requested_frame_number, o->chosen_frame_number, o->film ? "film" : "video");
     }
 
@@ -620,7 +620,7 @@ const VSFrame * TDecimate::GetFrameMode4(int n, int activationReason, VSFrameCon
 
   double metricN = (metricU*100.0) / MAX_DIFF;
   if (debug)
-    logInfo(vsapi, vscore, "TDecimate:  frame %d  metric = %3.2f  metricF =  %" PRIu64 " (%3.2f)",
+    logInfo(vsapi, vscore, "TDecimate:  frame {}  metric = {:3.2f}  metricF =  {} ({:3.2f})",
       n, metricN, metricF, (double)metricF*100.0 / (double)sceneDivU);
   if (output.size() && metricsOutArray.size())
   {
@@ -637,16 +637,11 @@ const VSFrame * TDecimate::GetFrameMode4(int n, int activationReason, VSFrameCon
   if (display)
   {
 
-#define SZ 160
-    char buf[SZ] = { 0 };
 
     std::string body = "Mode: 4 (metrics output)\n";
-    snprintf(buf, SZ, "chroma = %s  denoise = %s\n", chroma ? "true" : "false",
+    body += std::format("chroma = {}  denoise = {}\n", chroma ? "true" : "false",
       predenoise ? "true" : "false");
-    body += buf;
-    snprintf(buf, SZ, "Frame %d:  %3.2f  %3.2f\n", n, metricN, (double)metricF*100.0 / (double)sceneDivU);
-    body += buf;
-#undef SZ
+    body += std::format("Frame {}:  {:3.2f}  {:3.2f}\n", n, metricN, (double)metricF*100.0 / (double)sceneDivU);
 
     setDisplayText(dst, body);
   }
@@ -674,7 +669,7 @@ const VSFrame * TDecimate::GetFrameMode56(int n, int activationReason, VSFrameCo
   const VSFrame *src = vsapi->getFrameFilter(frame, clip2, frameCtx);
 
   if (debug)
-    logInfo(vsapi, vscore, "TDecimate:  inframe = %d  useframe = %d  (mode = %d)", n, frame, mode);
+    logInfo(vsapi, vscore, "TDecimate:  inframe = {}  useframe = {}  (mode = {})", n, frame, mode);
 
   VSFrame *dst = vsapi->copyFrame(src, core);
   vsapi->freeFrame(src);
@@ -682,18 +677,13 @@ const VSFrame * TDecimate::GetFrameMode56(int n, int activationReason, VSFrameCo
 
   if (display)
   {
-#define SZ 160
-    char buf[SZ] = { 0 };
 
     std::string body;
     if (mode == 5)
-        snprintf(buf, SZ, "Mode: %d (vfr)  Hybrid = %d\n", mode, hybrid);
+      body += std::format("Mode: {} (vfr)  Hybrid = {}\n", mode, hybrid);
     else
-        snprintf(buf, SZ, "Mode: %d (120fps -> vfr)\n", mode);
-    body += buf;
-    snprintf(buf, SZ, "inframe = %d  useframe = %d\n", n, frame);
-    body += buf;
-#undef SZ
+      body += std::format("Mode: {} (120fps -> vfr)\n", mode);
+    body += std::format("inframe = {}  useframe = {}\n", n, frame);
     setDisplayText(dst, body);
   }
 
@@ -1172,7 +1162,7 @@ bool TDecimate::checkForObviousDecFrame(Cycle &p, Cycle &c, Cycle &n)
   }
   if (saved != cp && saved != cn) return false;
   if (debug)
-    logInfo(vsapi, vscore, "TDecimate:  obvious dec frame found  %d - %d!", saved, c.frameSO);
+    logInfo(vsapi, vscore, "TDecimate:  obvious dec frame found  {} - {}!", saved, c.frameSO);
   c.decimate[saved] = c.decimate2[saved] = 1;
   c.decSet = true;
   return true;
@@ -1210,7 +1200,7 @@ int TDecimate::checkForD2VDecFrame(Cycle &p, Cycle &c, Cycle &n)
   }
   if (v != 1 || (savedV != savedM && savedV != savedL)) return -20;
   if (debug)
-    logInfo(vsapi, vscore, "TDecimate:  d2v dec frame found  %d - %d!", savedV, c.frameSO);
+    logInfo(vsapi, vscore, "TDecimate:  d2v dec frame found  {} - {}!", savedV, c.frameSO);
   return savedV;
 }
 
@@ -1302,7 +1292,7 @@ bool TDecimate::checkForTwoDropLongestString(Cycle &p, Cycle &c, Cycle &n)
     c.decimate[c2] = c.decimate2[c2] = 1;
     c.decSet = true;
     if (debug)
-      logInfo(vsapi, vscore, "TDecimate:  drop two frames longest string  %d:%d - %d!",
+      logInfo(vsapi, vscore, "TDecimate:  drop two frames longest string  {}:{} - {}!",
         c1, c2, c.frameSO);
   }
   return true;
@@ -1363,7 +1353,7 @@ bool TDecimate::tryTwoDropMostSimilar(Cycle &p, Cycle &c, Cycle &n)
     c.decimate[savedc2] = c.decimate2[savedc2] = 1;
     c.decSet = true;
     if (debug)
-      logInfo(vsapi, vscore, "TDecimate:  drop two frames most similar  %d:%d - %d!",
+      logInfo(vsapi, vscore, "TDecimate:  drop two frames most similar  {}:{} - {}!",
         savedc1, savedc2, c.frameSO);
   }
   return true;
@@ -1601,7 +1591,7 @@ void TDecimate::findDupStrings(Cycle &p, Cycle &c, Cycle &n)
       if (usecp == 5) c1 = c2;
       c.decimate[c1] = c.decimate2[c1] = 1;
       if (debug)
-        logInfo(vsapi, vscore, "TDecimate:  usecp case %d - %d!", usecp, c.frameSO);
+        logInfo(vsapi, vscore, "TDecimate:  usecp case {} - {}!", usecp, c.frameSO);
       c.decSet = true;
       return;
     }
@@ -1611,7 +1601,7 @@ void TDecimate::findDupStrings(Cycle &p, Cycle &c, Cycle &n)
       c.decimate[c1] = c.decimate2[c1] = 1;
       c.decimate[c2] = c.decimate2[c2] = 1;
       if (debug)
-        logInfo(vsapi, vscore, "TDecimate:  usecp case %d - %d!", usecp, c.frameSO);
+        logInfo(vsapi, vscore, "TDecimate:  usecp case {} - {}!", usecp, c.frameSO);
       c.decSet = true;
       return;
     }
@@ -3605,7 +3595,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
   if (vi_clip2->format.bitsPerSample > 16)
     throw TIVTCError("TDecimate:  clip2: only 8-16 bit formats supported!");
 
-  if (debug) logInfo(vsapi, vscore, "TDecimate:  %s by tritical", VERSION);
+  if (debug) logInfo(vsapi, vscore, "TDecimate:  {} by tritical", VERSION);
 
   if (cycle > 5 && mode != 4 && mode != 6 && mode != 7)
   {

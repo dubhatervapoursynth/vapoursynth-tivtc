@@ -1,7 +1,7 @@
 project('TIVTC', 'cpp',
         version: '1',
-        default_options: ['cpp_std=c++17', 'buildtype=release'],
-        meson_version: '>=0.46')
+        default_options: ['cpp_std=c++20', 'buildtype=release'],
+        meson_version: '>=1.2.3')
 
 
 warnings = [

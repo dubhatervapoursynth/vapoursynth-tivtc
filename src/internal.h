@@ -4,7 +4,9 @@
 #include <stdexcept>
 #include <cstring>
 #include <cstdio>
-#include <cstdarg>
+#include <format>
+#include <string>
+#include <utility>
 #include <inttypes.h>
 #include <VapourSynth4.h>
 
@@ -55,8 +57,22 @@ constexpr int TOP_FIELD = 0x00000008;
 constexpr int COMBED = 0x00000010;
 constexpr int D2VFILM = 0x00000020;
 
-#define MTC(n) n == 0 ? 'p' : n == 1 ? 'c' : n == 2 ? 'n' : n == 3 ? 'b' : n == 4 ? 'u' : \
-               n == 5 ? 'l' : n == 6 ? 'h' : 'x'
+// The character a match code is written as, in the ovr/input file formats and in display text.
+// Exact inverse of decodeMatchChar below. This was a macro that expanded its argument seven times.
+constexpr char matchChar(int n)
+{
+  switch (n)
+  {
+  case ISP:  return 'p';
+  case ISC:  return 'c';
+  case ISN:  return 'n';
+  case ISB:  return 'b';
+  case ISU:  return 'u';
+  case ISDB: return 'l';
+  case ISDT: return 'h';
+  default:   return 'x';
+  }
+}
 
 // Decode an override/input file match specifier into a match code, or -1 if the character is
 // not one. (The parsers used to spell these out as decimal character codes.)
@@ -75,37 +91,31 @@ static inline int decodeMatchChar(int c)
   }
 }
 
-#if defined(__clang__) || defined(__GNUC__)
-#define TIVTC_PRINTF_FMT(f, a) __attribute__((format(printf, f, a)))
-#else
-#define TIVTC_PRINTF_FMT(f, a)
-#endif
-
 // Emit a formatted informational message to the VapourSynth log. Call sites gate on their own
-// `debug` flag; there is no other logging path out of these filters.
-TIVTC_PRINTF_FMT(3, 4)
-static inline void logInfo(const VSAPI *vsapi, VSCore *core, const char *fmt, ...)
+// `debug` flag; there is no other logging path out of these filters. std::format_string makes the
+// format string and its arguments checked at compile time, which the old varargs version could
+// only ask the compiler to check as a favour.
+template<typename... Args>
+static inline void logInfo(const VSAPI *vsapi, VSCore *core, std::format_string<Args...> fmt, Args&&... args)
 {
-  char msg[1024];
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(msg, sizeof(msg), fmt, args);
-  va_end(args);
-  vsapi->logMessage(mtInformation, msg, core);
+  const std::string msg = std::format(fmt, std::forward<Args>(args)...);
+  vsapi->logMessage(mtInformation, msg.c_str(), core);
 }
 
 // As logInfo, but for conditions the user probably did not intend. These are always emitted --
 // they do not depend on the `debug` parameter, since the point is that something was asked for
 // that cannot be honoured.
-TIVTC_PRINTF_FMT(3, 4)
-static inline void logWarning(const VSAPI *vsapi, VSCore *core, const char *fmt, ...)
+template<typename... Args>
+static inline void logWarning(const VSAPI *vsapi, VSCore *core, std::format_string<Args...> fmt, Args&&... args)
 {
-  char msg[1024];
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(msg, sizeof(msg), fmt, args);
-  va_end(args);
-  vsapi->logMessage(mtWarning, msg, core);
+  const std::string msg = std::format(fmt, std::forward<Args>(args)...);
+  vsapi->logMessage(mtWarning, msg.c_str(), core);
+}
+
+// Round n up to the next multiple of align, which must be a power of two.
+constexpr int alignUp(int n, int align)
+{
+  return (n + align - 1) & ~(align - 1);
 }
 
 // Blank lines and lines opening with ';' or '#' carry no data in any of the ovr/input file formats.

@@ -122,13 +122,8 @@ const VSFrame * TDecimate::GetFrameMode2(int n, int activationReason, void **fra
   std::string body;
   if (display)
   {
-#define SZ 160
-    char buf[SZ] = { 0 };
-    snprintf(buf, SZ, "Mode: 2  Rate = %3.6f\n", rate);
-    body += buf;
-    snprintf(buf, SZ, "inframe = %d  useframe = %d\n", n, ret);
-    body += buf;
-#undef SZ
+    body += std::format("Mode: 2  Rate = {:3.6f}\n", rate);
+    body += std::format("inframe = {}  useframe = {}\n", n, ret);
   }
   return chosenFrameWithDisplay(ret, frameCtx, core, body);
 }
@@ -460,7 +455,7 @@ double TDecimate::buildDecStrategy()
     }
     mode2_decA.resize(0);
     if (debug)
-      logInfo(vsapi, vscore, "drop count = %d  expected = %d", vi.numFrames - v,
+      logInfo(vsapi, vscore, "drop count = {}  expected = {}", vi.numFrames - v,
         vi.numFrames - (int)(vi.numFrames*aRate / fps));
     mode2_numCycles = -20;
   }
@@ -503,7 +498,7 @@ double TDecimate::buildDecStrategy()
       aLUT[x * 5 + 3] = x*clength + add - dropCount;
     }
     if (debug)
-      logInfo(vsapi, vscore, "drop count = %d  expected = %d", dropCount,
+      logInfo(vsapi, vscore, "drop count = {}  expected = {}", dropCount,
         vi.numFrames - (int)(vi.numFrames*aRate / fps));
     if (clength != 5)
     {
@@ -516,13 +511,13 @@ double TDecimate::buildDecStrategy()
   memcpy(mode2_cfs, rc, 10 * sizeof(int));
   if (debug)
   {
-    logInfo(vsapi, vscore, "rate = %f  actual rate = %f", rate, aRate);
-    logInfo(vsapi, vscore, "mode2_num = %d  mode2_den = %d  numCycles = %d  clength = %d",
+    logInfo(vsapi, vscore, "rate = {:f}  actual rate = {:f}", rate, aRate);
+    logInfo(vsapi, vscore, "mode2_num = {}  mode2_den = {}  numCycles = {}  clength = {}",
       mode2_num, mode2_den, mode2_numCycles, clength);
     for (int x = 0; x < 10; ++x)
     {
       if (mode2_cfs[x] <= 0) break;
-      logInfo(vsapi, vscore, "mode2_cfs %d = %d", x, mode2_cfs[x]);
+      logInfo(vsapi, vscore, "mode2_cfs {} = {}", x, mode2_cfs[x]);
     }
   }
   return aRate;

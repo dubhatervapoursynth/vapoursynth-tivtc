@@ -53,20 +53,17 @@ void TDecimate::addMetricCycle(const Cycle &j)
 void TDecimate::displayOutput(VSFrame *dst, int n,
   int ret, bool film, double amount1, double amount2, int f1, int f2)
 {
-#define SZ 160
-  char buf[SZ]; // snprintf scratch only; everything is appended to `text` directly
 
   std::string text;
 
 
-  snprintf(buf, SZ, "Mode: %d  Cycle: %d  CycleR: %d  Hybrid: %d\n", mode, cycle, cycleR, hybrid);
-  text += buf;
+  text += std::format("Mode: {}  Cycle: {}  CycleR: {}  Hybrid: {}\n", mode, cycle, cycleR, hybrid);
 
   if (amount1 == 0.0 && amount2 == 0.0)
-    snprintf(buf, SZ, "inframe: %d  useframe: %d\n", n, ret);
-  else snprintf(buf, SZ, "inframe: %d  useframe: blend %d-%d (%3.2f,%3.2f)\n", n, f1, f2,
-    amount1*100.0, amount2*100.0);
-  text += buf;
+    text += std::format("inframe: {}  useframe: {}\n", n, ret);
+  else
+    text += std::format("inframe: {}  useframe: blend {}-{} ({:3.2f},{:3.2f})\n", n, f1, f2,
+      amount1*100.0, amount2*100.0);
 
   if (mode == 0 || (mode == 3 && vfrDec == 0))
   {
@@ -76,13 +73,12 @@ void TDecimate::displayOutput(VSFrame *dst, int n,
     int mc = curr.cycleS < curr.cycleE ? curr.match[curr.cycleS] : -20;
     for (int x = curr.cycleS; x < curr.cycleE; ++x)
     {
-      snprintf(buf, SZ, "%d%s%3.2f", curr.frame + x, curr.decimate[x] == 1 ? ":**" : ":  ",
+      text += std::format("{}{}{:3.2f}", curr.frame + x, curr.decimate[x] == 1 ? ":**" : ":  ",
         curr.diffMetricsN[x]);
-      text += buf;
       if (mc >= 0)
       {
         text += ' ';
-        text += (char)(MTC(mc));
+        text += (char)(matchChar(mc));
         if (checkMatchDup(mp, mc))
           text += " (mdup)";
         if (curr.filmd2v[x] == 1)
@@ -103,13 +99,12 @@ void TDecimate::displayOutput(VSFrame *dst, int n,
     int mc = curr.cycleS < curr.cycleE ? curr.match[curr.cycleS] : -20;
     for (int x = curr.cycleS; x < curr.cycleE; ++x)
     {
-      snprintf(buf, SZ, "%d%s%3.2f", curr.frame + x, curr.decimate[x] == 1 ? ":**" : ":  ",
+      text += std::format("{}{}{:3.2f}", curr.frame + x, curr.decimate[x] == 1 ? ":**" : ":  ",
         curr.diffMetricsN[x]);
-      text += buf;
       if (mc >= 0)
       {
         text += ' ';
-        text += (char)(MTC(mc));
+        text += (char)(matchChar(mc));
       }
       text += curr.dupArray[x] == 1 ? " (dup)" : " (new)";
       if (mc >= 0)
@@ -134,7 +129,6 @@ void TDecimate::displayOutput(VSFrame *dst, int n,
   }
   else text += "VIDEO\n";
 
-#undef SZ
 
     setDisplayText(dst, text);
 }

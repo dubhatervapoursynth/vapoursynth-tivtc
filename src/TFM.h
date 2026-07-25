@@ -36,6 +36,7 @@
 #endif
 #include <memory>
 #include <vector>
+#include <array>
 #include <string>
 #include <VapourSynth4.h>
 #include <VSHelper4.h>
@@ -48,6 +49,10 @@ void FillCombedPlanarUpdateCmaskByUV(VSFrame* cmask, const VSAPI *vsapi);
 
 template<typename pixel_t>
 void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, int metric, const VSFrame *src, VSFrame* cmask, const VSAPI *vsapi);
+
+// One entry per match code (p, c, n, b, u). Declared as an array type rather than int* so the
+// size travels with it: every one of these used to decay to a bare pointer at the call.
+using MicArray = std::array<int, 5>;
 
 struct MTRACK {
   int frame, match;
@@ -141,7 +146,7 @@ private:
     uint8_t *dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
     int Width, int bits_per_pixel) const;
 
-  void fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int mics[5]);
+  void fileOut(int match, int combed, bool d2vfilm, int n, int MICount, const MicArray &mics);
 
   // Everything one GetFrame call threads between its steps. The three mode branches and the mic
   // post-pass all read and write this, so it travels as one bundle rather than as a dozen
@@ -157,8 +162,8 @@ private:
     int combed = -1;
     int xblocks = -20;
     bool d2vmatch = false;
-    int mics[5] = { -20, -20, -20, -20, -20 };
-    int blockN[5] = { -20, -20, -20, -20, -20 };
+    MicArray mics = { -20, -20, -20, -20, -20 };
+    MicArray blockN = { -20, -20, -20, -20, -20 };
   };
 
   bool resolveFieldOrder(FrameMatchState &st, VSFrameContext *frameCtx);
@@ -209,18 +214,18 @@ private:
   void appendSetting(int specifier, int first, int last, int value, int &i);
   
   bool checkCombed(const VSFrame *src, int n, int match,
-    int *blockN, int &xblocksi, int *mics, bool ddebug);
+    MicArray &blockN, int &xblocksi, MicArray &mics, bool ddebug);
   bool checkCombedPlanar(const VSFrame *src, int n, int match,
-    int *blockN, int &xblocksi, int *mics, bool ddebug, bool _chroma);
+    MicArray &blockN, int &xblocksi, MicArray &mics, bool ddebug, bool _chroma);
   template<typename pixel_t>
   bool checkCombedPlanar_core(const VSFrame *src, int n, int match,
-    int* blockN, int& xblocksi, int* mics, bool ddebug, int bits_per_pixel);
+    MicArray &blockN, int &xblocksi, MicArray &mics, bool ddebug, int bits_per_pixel);
   
   void writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
-    int blockN, int xblocks, bool d2vmatch, int *mics, const VSFrame *prv,
+    int blockN, int xblocks, bool d2vmatch, const MicArray &mics, const VSFrame *prv,
     const VSFrame *src, const VSFrame *nxt);
 
-  void putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, const int mics[5]) const;
+  void putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, const MicArray &mics) const;
   void validateParameters();
   void parseInputFile();
   void parseOvrFile();
@@ -249,7 +254,7 @@ private:
     int &combed, int &cfrm) const;
   void checkmm(int &cmatch, int m1, int m2, VSFrame *dst, int &dfrm, VSFrame *tmp, int &tfrm,
     const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int n,
-    int *blockN, int &xblocks, int *mics);
+    MicArray &blockN, int &xblocks, MicArray &mics);
 
   // O.K. common parts with TDeint
   // fixme: hbd!
