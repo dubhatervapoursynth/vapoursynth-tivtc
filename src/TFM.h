@@ -204,6 +204,7 @@ private:
     const VSFrame *nxt, int match, int &cfrm) const;
   
   bool getMatchOvr(int n, int &match, int &combed, bool &d2vmatch, bool isSC);
+  void warnOvrOverrides() const;
   void getSettingOvr(int n);
   void appendSetting(int specifier, int first, int last, int value, int &i);
   

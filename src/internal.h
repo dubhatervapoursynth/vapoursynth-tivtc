@@ -94,6 +94,20 @@ static inline void logInfo(const VSAPI *vsapi, VSCore *core, const char *fmt, ..
   vsapi->logMessage(mtInformation, msg, core);
 }
 
+// As logInfo, but for conditions the user probably did not intend. These are always emitted --
+// they do not depend on the `debug` parameter, since the point is that something was asked for
+// that cannot be honoured.
+TIVTC_PRINTF_FMT(3, 4)
+static inline void logWarning(const VSAPI *vsapi, VSCore *core, const char *fmt, ...)
+{
+  char msg[1024];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(msg, sizeof(msg), fmt, args);
+  va_end(args);
+  vsapi->logMessage(mtWarning, msg, core);
+}
+
 // Blank lines and lines opening with ';' or '#' carry no data in any of the ovr/input file formats.
 static inline bool isBlankOrCommentLine(const char *line)
 {

@@ -723,6 +723,41 @@ void TFM::appendSetting(int specifier, int first, int last, int value, int &i)
   setArray[i] = value; ++i;
 }
 
+// The ovr file can override `mode` and `PP` per frame, but two things are settled once, at filter
+// creation: whether a TFMPP node is added to the graph (PP > 1), and whether this filter asks for
+// the serialised delivery that mode 7's carried field choice relies on. An override that needs
+// either cannot retroactively obtain it, so report it instead of quietly behaving differently.
+void TFM::warnOvrOverrides() const
+{
+  if (setArray.size() == 0) return;
+
+  int modeSevenAt = -1, ppRaiseAt = -1, ppRaiseTo = 0;
+  for (int x = 0; x < (int)setArray.size(); x += 4)
+  {
+    const int spec = setArray[x], firstFrame = setArray[x + 1], value = setArray[x + 3];
+    if (spec == 'm' && value == 7 && !linearAccess && modeSevenAt < 0)
+      modeSevenAt = firstFrame;
+    if (spec == 'P' && value > 1 && PP_origSaved <= 1 && ppRaiseAt < 0)
+    {
+      ppRaiseAt = firstFrame;
+      ppRaiseTo = value;
+    }
+  }
+
+  if (modeSevenAt >= 0)
+    logWarning(vsapi, vscore, "TFM:  ovr file selects mode 7 (first at frame %d) but the filter was "
+      "created with mode=%d, so it did not request the serialised frame delivery mode 7 needs. "
+      "Mode 7 carries its field choice over from the previously produced frame, so the output will "
+      "depend on the order frames happen to be requested in. Pass mode=7 to TFM instead.",
+      modeSevenAt, mode_origSaved);
+
+  if (ppRaiseAt >= 0)
+    logWarning(vsapi, vscore, "TFM:  ovr file raises PP to %d (first at frame %d) but the filter was "
+      "created with PP=%d, so no post-processing filter was added to the graph and the override "
+      "cannot take effect. Pass PP=%d (or higher) to TFM instead.",
+      ppRaiseTo, ppRaiseAt, PP_origSaved, ppRaiseTo);
+}
+
 void TFM::getSettingOvr(int n)
 {
   if (setArray.size() == 0) return;
@@ -2474,9 +2509,14 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
 #undef ALIGN_NUMBER
 
   tbuffer.resize((size_t)(vi->height >> 1) * tpitchy);
-  mode7_field = field;
+  // Seed from the resolved field order, not the raw `field` parameter: that is still -1 whenever
+  // the user left it at the default, and mode 7 hands mode7_field straight to `field` for any
+  // frame where both candidate matches comb. A -1 there reaches TFMPP as the TFMField property,
+  // where PP=3 walks copyField() one row off the end of the plane.
+  mode7_field = fieldO;
   parseInputFile();
   parseOvrFile();
+  warnOvrOverrides();
   setupOutputFiles();
 }
 TFM::~TFM()
