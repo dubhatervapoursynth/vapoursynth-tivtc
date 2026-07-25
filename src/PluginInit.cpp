@@ -497,7 +497,7 @@ static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, [[maybe_unused]] 
 
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
-    vspapi->configPlugin("com.nodame.tivtc", "tivtc", "Field matching and decimation", VS_MAKE_VERSION(3, 5), VAPOURSYNTH_API_VERSION, 0, plugin);
+    vspapi->configPlugin("com.nodame.tivtc", "tivtc", "Field matching and decimation", VS_MAKE_VERSION(4, 0), VAPOURSYNTH_API_VERSION, 0, plugin);
     vspapi->registerFunction("TFM",
                  "clip:vnode;"
                  "order:int:opt;"
