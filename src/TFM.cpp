@@ -34,455 +34,60 @@ enum _FieldBased {
     TopFieldFirst = 2
 };
 
-const VSFrame *TFM::GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
+// The order/field pair decides which physical field each match code names, so it has to be
+// settled before any comparison happens. order == -1 means "take it from the frame properties".
+bool TFM::resolveFieldOrder(FrameMatchState &st, VSFrameContext *frameCtx)
 {
-  if (n < 0) n = 0;
-  else if (n > nfrms) n = nfrms;
+  const VSMap *props = vsapi->getFramePropertiesRO(st.src);
+  if (order == -1)
+  {
+    int err;
+    const int64_t field_based = vsapi->mapGetInt(props, "_FieldBased", 0, &err);
+    if (err) // prop not present
+    {
+      vsapi->setFilterError("TFM: Couldn't find the '_FieldBased' frame property. The 'order' parameter must be used.", frameCtx);
+      return false;
+    }
 
-  if (activationReason == arInitial) {
-      vsapi->requestFrameFilter(std::max(0, n - 1), child, frameCtx);
-      vsapi->requestFrameFilter(n, child, frameCtx);
-      vsapi->requestFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
-      return nullptr;
-  } else if (activationReason != arAllFramesReady) {
-      return nullptr;
-  }
-
-  const VSFrame *prv = vsapi->getFrameFilter(std::max(0, n - 1), child, frameCtx);
-  const VSFrame *src = vsapi->getFrameFilter(n, child, frameCtx);
-  const VSFrame *nxt = vsapi->getFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
-
-  int dfrm = -20, tfrm = -20;
-  int mmatch1, nmatch1, nmatch2, mmatch2, fmatch, tmatch;
-  int combed = -1, tcombed = -1, xblocks = -20;
-  bool d2vfilm = false, d2vmatch = false, isSC = true;
-  int mics[5] = { -20, -20, -20, -20, -20 };
-  int blockN[5] = { -20, -20, -20, -20, -20 };
-  order = order_origSaved;
-  mode = mode_origSaved;
-  field = field_origSaved;
-  PP = PP_origSaved;
-  MI = MI_origSaved;
-  getSettingOvr(n); // process overrides
-
-  const VSMap *props = vsapi->getFramePropertiesRO(src);
-  int err;
-
-  if (order == -1) {
-      int64_t field_based = vsapi->mapGetInt(props, "_FieldBased", 0, &err);
-      if (err) { // prop not present
-          vsapi->setFilterError("TFM: Couldn't find the '_FieldBased' frame property. The 'order' parameter must be used.", frameCtx);
-          vsapi->freeFrame(prv);
-          vsapi->freeFrame(src);
-          vsapi->freeFrame(nxt);
-          return nullptr;
-      }
-
-      /// Pretend it's top field first when it says progressive?
-      order = (field_based == TopFieldFirst || field_based == Progressive);
-//      order = child->GetParity(n) ? 1 : 0;
+    /// Pretend it's top field first when it says progressive?
+    order = (field_based == TopFieldFirst || field_based == Progressive);
+//    order = child->GetParity(n) ? 1 : 0;
   }
   if (field == -1) field = order;
-  int frstT = field^order ? 2 : 0;
-  int scndT = (mode == 2 || mode == 6) ? (field^order ? 3 : 4) : (field^order ? 0 : 2);
+  st.frstT = field^order ? 2 : 0;
+  st.scndT = (mode == 2 || mode == 6) ? (field^order ? 3 : 4) : (field^order ? 0 : 2);
+  return true;
+}
 
-  VSFrame *dst = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, src, core);
-  VSFrame *tmp = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, nullptr, core);
+// Weave and measure whichever of the five matches have not been measured yet, so that the mic
+// values written to the output file (and used by micmatching) are complete. Without allMatches
+// only p/c/n are filled unless micout asks for all five.
+void TFM::fillMissingMics(FrameMatchState &st, bool allMatches)
+{
+  for (int i = 0; i < 5; ++i)
+  {
+    if (st.mics[i] == -20 && (i < 3 || micout > 1 || allMatches))
+    {
+      createWeaveFrame(st.tmp, st.prv, st.src, st.nxt, i, st.tfrm);
+      checkCombed(st.tmp, st.n, i, st.blockN, st.xblocks, st.mics, true);
+    }
+  }
+}
 
-//  if (debug)
-//  {
-//    sprintf(buf, "TFM:  ----------------------------------------\n");
-//    OutputDebugString(buf);
-//  }
-  if (getMatchOvr(n, fmatch, combed, d2vmatch,
-    flags == 5 ? checkSceneChange(prv, src, nxt, n) : false))
-  {
-    createWeaveFrame(dst, prv, src, nxt, fmatch, dfrm);
-    if (PP > 0 && combed == -1)
-    {
-      if (checkCombed(dst, n, fmatch, blockN, xblocks, mics, false))
-      {
-        if (d2vmatch)
-        {
-          d2vmatch = false;
-          for (int j = 0; j < 5; ++j)
-            mics[j] = -20;
-          goto d2vCJump;
-        }
-        else combed = 2;
-      }
-      else combed = 0;
-    }
-    d2vfilm = d2vduplicate(fmatch, combed, n);
-    if (micout > 0)
-    {
-      for (int i = 0; i < 5; ++i)
-      {
-        if (mics[i] == -20 && (i < 3 || micout > 1))
-        {
-          createWeaveFrame(tmp, prv, src, nxt, i, tfrm);
-          checkCombed(tmp, n, i, blockN, xblocks, mics, true);
-        }
-      }
-    }
-    fileOut(fmatch, combed, d2vfilm, n, mics[fmatch], mics);
-    if (display) writeDisplay(dst, n, fmatch, combed, true, blockN[fmatch], xblocks,
-      d2vmatch, mics, prv, src, nxt);
-//    if (debug)
-//    {
-//      char buft[20];
-//      if (mics[fmatch] < 0) sprintf(buft, "N/A");
-//      else sprintf(buft, "%d", mics[fmatch]);
-//      sprintf(buf, "TFM:  frame %d  - final match = %c %s  MIC = %s  (OVR)\n", n, MTC(fmatch),
-//        d2vmatch ? "(D2V)" : "", buft);
-//      OutputDebugString(buf);
-//      if (micout > 0)
-//      {
-//        if (micout > 1)
-//          sprintf(buf, "TFM:  frame %d  - mics: p = %d  c = %d  n = %d  b = %d  u = %d\n",
-//            n, mics[0], mics[1], mics[2], mics[3], mics[4]);
-//        else
-//          sprintf(buf, "TFM:  frame %d  - mics: p = %d  c = %d  n = %d\n",
-//            n, mics[0], mics[1], mics[2]);
-//        OutputDebugString(buf);
-//      }
-//      sprintf(buf, "TFM:  frame %d  - mode = %d  field = %d  order = %d  d2vfilm = %c\n", n, mode, field, order,
-//        d2vfilm ? 'T' : 'F');
-//      OutputDebugString(buf);
-//      if (combed != -1)
-//      {
-//        if (combed == 1) sprintf(buf, "TFM:  frame %d  - CLEAN FRAME  (forced!)\n", n);
-//        else if (combed == 5) sprintf(buf, "TFM:  frame %d  - COMBED FRAME  (forced!)\n", n);
-//        else if (combed == 0) sprintf(buf, "TFM:  frame %d  - CLEAN FRAME\n", n);
-//        else sprintf(buf, "TFM:  frame %d  - COMBED FRAME\n", n);
-//        OutputDebugString(buf);
-//      }
-//    }
-    if (usehints || PP >= 2) putFrameProperties(dst, fmatch, combed, d2vfilm, mics);
-    lastMatch.frame = n;
-    lastMatch.match = fmatch;
-    lastMatch.field = field;
-    lastMatch.combed = combed;
-    vsapi->freeFrame(prv);
-    vsapi->freeFrame(src);
-    vsapi->freeFrame(nxt);
-    vsapi->freeFrame(tmp);
-    return dst;
-  }
-d2vCJump:
-  if (mode == 6)
-  {
-    int thrdT = field^order ? 0 : 2;
-    int frthT = field^order ? 4 : 3;
-    tcombed = 0;
-    if (!slow) fmatch = compareFields(prv, src, nxt, 1, frstT, nmatch1, nmatch2, mmatch1, mmatch2, n);
-    else fmatch = compareFieldsSlow(prv, src, nxt, 1, frstT, nmatch1, nmatch2, mmatch1, mmatch2, n);
-    if (micmatching > 0)
-      checkmm(fmatch, 1, frstT, dst, dfrm, tmp, tfrm, prv, src, nxt, n, blockN, xblocks, mics);
-    createWeaveFrame(dst, prv, src, nxt, fmatch, dfrm);
-    if (checkCombed(dst, n, fmatch, blockN, xblocks, mics, false))
-    {
-      tcombed = 2;
-      if (ubsco) isSC = checkSceneChange(prv, src, nxt, n);
-      if (isSC) createWeaveFrame(tmp, prv, src, nxt, scndT, tfrm);
-      if (isSC && !checkCombed(tmp, n, scndT, blockN, xblocks, mics, false))
-      {
-        fmatch = scndT;
-        tcombed = 0;
-        copyFrame(dst, tmp, vsapi);
-        dfrm = fmatch;
-      }
-      else
-      {
-        createWeaveFrame(tmp, prv, src, nxt, thrdT, tfrm);
-        if (!checkCombed(tmp, n, thrdT, blockN, xblocks, mics, false))
-        {
-          fmatch = thrdT;
-          tcombed = 0;
-          copyFrame(dst, tmp, vsapi);
-          dfrm = fmatch;
-        }
-        else
-        {
-          if (isSC) createWeaveFrame(tmp, prv, src, nxt, frthT, tfrm);
-          if (isSC && !checkCombed(tmp, n, frthT, blockN, xblocks, mics, false))
-          {
-            fmatch = frthT;
-            tcombed = 0;
-            copyFrame(dst, tmp, vsapi);
-            dfrm = fmatch;
-          }
-        }
-      }
-    }
-    if (combed == -1 && PP > 0) combed = tcombed;
-  }
-  else if (mode == 7)
-  {
-//    if (debug && lastMatch.frame != n && n != 0)
-//    {
-//      sprintf(buf, "TFM:  mode 7 - non-linear access detected!\n");
-//      OutputDebugString(buf);
-//    }
-    combed = 0;
-    bool combed1 = false, combed2 = false;
-    if (!slow) fmatch = compareFields(prv, src, nxt, 1, frstT, nmatch1, nmatch2, mmatch1, mmatch2, n);
-    else fmatch = compareFieldsSlow(prv, src, nxt, 1, frstT, nmatch1, nmatch2, mmatch1, mmatch2, n);
-    createWeaveFrame(dst, prv, src, nxt, 1, dfrm);
-    combed1 = checkCombed(dst, n, 1, blockN, xblocks, mics, false);
-    createWeaveFrame(dst, prv, src, nxt, frstT, dfrm);
-    combed2 = checkCombed(dst, n, frstT, blockN, xblocks, mics, false);
-    if (!combed1 && !combed2)
-    {
-      createWeaveFrame(dst, prv, src, nxt,fmatch, dfrm);
-      if (field == 0) mode7_field = 1;
-      else mode7_field = 0;
-    }
-    else if (!combed2 && combed1)
-    {
-      createWeaveFrame(dst, prv, src, nxt, frstT, dfrm);
-      mode7_field = 1;
-      fmatch = frstT;
-    }
-    else if (!combed1 && combed2)
-    {
-      createWeaveFrame(dst, prv, src, nxt, 1, dfrm);
-      mode7_field = 0;
-      fmatch = 1;
-    }
-    else
-    {
-      createWeaveFrame(dst, prv, src, nxt, 1, dfrm);
-      combed = 2;
-      field = mode7_field;
-      fmatch = 1;
-    }
-  }
-  else
-  {
-    if (!slow) 
-      fmatch = compareFields(prv, src, nxt, 1, frstT, nmatch1, nmatch2, mmatch1, mmatch2, n);
-    else 
-      fmatch = compareFieldsSlow(prv, src, nxt, 1, frstT, nmatch1, nmatch2, mmatch1, mmatch2, n);
-    if (micmatching > 0)
-      checkmm(fmatch, 1, frstT, dst, dfrm, tmp, tfrm, prv, src, nxt, n, blockN, xblocks, mics);
-    createWeaveFrame(dst, prv, src, nxt, fmatch, dfrm);
-    if (mode > 3 || (mode > 0 && checkCombed(dst, n, fmatch, blockN, xblocks, mics, false)))
-    {
-      if (mode < 4) tcombed = 2;
-      if (mode != 2)
-      {
-        if (!slow) 
-          tmatch = compareFields(prv, src, nxt, fmatch, scndT, nmatch1, nmatch2, mmatch1, mmatch2, n);
-        else 
-          tmatch = compareFieldsSlow(prv, src, nxt, fmatch, scndT, nmatch1, nmatch2, mmatch1, mmatch2, n);
-        if (micmatching > 0)
-          checkmm(tmatch, fmatch, scndT, dst, dfrm, tmp, tfrm, prv, src, nxt, n, blockN, xblocks, mics);
-        createWeaveFrame(dst, prv, src, nxt, fmatch, dfrm);
-      }
-      else tmatch = scndT;
-      if (tmatch == scndT)
-      {
-        if (mode > 3)
-        {
-          fmatch = tmatch;
-          createWeaveFrame(dst, prv, src, nxt, fmatch, dfrm);
-        }
-        else if (mode != 2 || !ubsco || checkSceneChange(prv, src, nxt, n))
-        {
-          createWeaveFrame(tmp, prv, src, nxt, tmatch, tfrm);
-          if (!checkCombed(tmp, n, tmatch, blockN, xblocks, mics, false))
-          {
-            fmatch = tmatch;
-            tcombed = 0;
-            copyFrame(dst, tmp, vsapi);
-            dfrm = fmatch;
-          }
-        }
-      }
-      if ((mode == 3 && tcombed == 2) || (mode == 5 && checkCombed(dst, n, fmatch, blockN, xblocks, mics, false)))
-      {
-        tcombed = 2;
-        if (!ubsco || checkSceneChange(prv, src, nxt, n))
-        {
-          if (!slow) 
-            tmatch = compareFields(prv, src, nxt, 3, 4, nmatch1, nmatch2, mmatch1, mmatch2, n);
-          else 
-            tmatch = compareFieldsSlow(prv, src, nxt, 3, 4, nmatch1, nmatch2, mmatch1, mmatch2, n);
-          if (micmatching > 0)
-            checkmm(tmatch, 3, 4, dst, dfrm, tmp, tfrm, prv, src, nxt, n, blockN, xblocks, mics);
-          createWeaveFrame(tmp, prv, src, nxt, tmatch, tfrm);
-          if (!checkCombed(tmp, n, tmatch, blockN, xblocks, mics, false))
-          {
-            fmatch = tmatch;
-            tcombed = 0;
-            copyFrame(dst, tmp, vsapi);
-            dfrm = fmatch;
-          }
-          else
-            createWeaveFrame(dst, prv, src, nxt, fmatch, dfrm);
-        }
-      }
-      if (mode == 5 && tcombed == -1) tcombed = 0;
-    }
-    if ((mode == 1 || mode == 2 || mode == 3) && tcombed == -1) tcombed = 0;
-    if (combed == -1 && PP > 0) combed = tcombed;
-    if (PP > 0 && combed == -1)
-    {
-      if (checkCombed(dst, n, fmatch, blockN, xblocks, mics, false)) combed = 2;
-      else combed = 0;
-    }
-    if (dfrm != fmatch) {
-        vsapi->setFilterError("TFM: internal error (dfrm!=fmatch). Please report this.", frameCtx);
-        vsapi->freeFrame(prv);
-        vsapi->freeFrame(src);
-        vsapi->freeFrame(nxt);
-        vsapi->freeFrame(dst);
-        vsapi->freeFrame(tmp);
-        return nullptr;
-    }
-  }
-  if (micout > 0 || (micmatching > 0 && mics[fmatch] > 15 && mode != 7 && !(micmatching == 2 && (mode == 0 || mode == 4))
-    && (!mmsco || checkSceneChange(prv, src, nxt, n))))
-  {
-    for (int i = 0; i < 5; ++i)
-    {
-      if (mics[i] == -20 && (i < 3 || micout > 1 || micmatching > 0))
-      {
-        createWeaveFrame(tmp, prv, src, nxt, i, tfrm);
-        checkCombed(tmp, n, i, blockN, xblocks, mics, true);
-      }
-    }
-    if (micmatching > 0 && mode != 7 && mics[fmatch] > 15 &&
-      (!mmsco || checkSceneChange(prv, src, nxt, n)))
-    {
-      int i, j, temp1, temp2, order1[5], order2[5] = { 0, 1, 2, 3, 4 };
-      for (i = 0; i < 5; ++i) order1[i] = mics[i];
-      for (i = 1; i < 5; ++i)
-      {
-        j = i;
-        temp1 = order1[j];
-        temp2 = order2[j];
-        while (j > 0 && order1[j - 1] > temp1)
-        {
-          order1[j] = order1[j - 1];
-          order2[j] = order2[j - 1];
-          --j;
-        }
-        order1[j] = temp1;
-        order2[j] = temp2;
-      }
-      if (micmatching == 1)
-      {
-      othertest:
-        if (order1[0] * 3 < order1[1] && abs(order1[0] - order1[1]) > 15 &&
-          order1[0] < MI && order2[0] != fmatch &&
-          (((field^order) && (order2[0] == 1 || order2[0] == 2 || order2[0] == 3)) ||
-          (!(field^order) && (order2[0] == 0 || order2[0] == 1 || order2[0] == 4))))
-        {
-          bool xfield = (field^order) == 0 ? false : true;
-          // Only trust lastMatch when frames are guaranteed to arrive in order.
-          int lmatch = (linearAccess && lastMatch.frame == n - 1) ? lastMatch.match : -20;
-          if (!((order2[0] == 4 && lmatch == 0 && !xfield && (order2[1] == 0 || order2[2] == 0)) ||
-            (order2[0] == 3 && lmatch == 2 && xfield && (order2[1] == 2 || order2[2] == 2))))
-          {
-            micChange(n, fmatch, order2[0], dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-          }
-        }
-        if (order1[0] * 4 < order1[1] && abs(order1[0] - order1[1]) > 30 &&
-          order1[0] < MI && order1[1] >= MI && order2[0] != fmatch)
-        {
-          micChange(n, fmatch, order2[0], dst, prv, src, nxt,
-            fmatch, combed, dfrm);
-        }
-      }
-      else if (micmatching == 2 || micmatching == 3)
-      {
-        int try1 = field^order ? 2 : 0, try2, minm, mint, try3, try4;
-        if (mode == 1) // p/c + n
-        {
-          try2 = try1 == 2 ? 0 : 2;
-          minm = std::min(mics[1], mics[try1]);
-          if (mics[try2] * 3 < minm && mics[try2] < MI && abs(mics[try2] - minm) >= 30 && try2 != fmatch)
-            micChange(n, fmatch, try2, dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-        }
-        else if (mode == 2) // p/c + u
-        {
-          try2 = try1 == 2 ? 3 : 4;
-          minm = std::min(mics[1], mics[try1]);
-          if (mics[try2] * 3 < minm && mics[try2] < MI && abs(mics[try2] - minm) >= 30 && try2 != fmatch)
-            micChange(n, fmatch, try2, dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-        }
-        else if (mode == 3) // p/c + n + u/b
-        {
-          try2 = try1 == 2 ? 0 : 2;
-          minm = std::min(mics[1], mics[try1]);
-          mint = std::min(mics[3], mics[4]);
-          try3 = try1 == 2 ? (mint == mics[3] ? 3 : 4) : (mint == mics[4] ? 4 : 3);
-          if (mics[try2] * 3 < minm && mics[try2] < MI && abs(mics[try2] - minm) >= 30 && try2 != fmatch &&
-            fmatch != 3 && fmatch != 4)
-          {
-            micChange(n, fmatch, try2, dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-            minm = mics[try2];
-          }
-          else if (fmatch == try2) minm = std::min(mics[try2], minm);
-          if (mint * 3 < minm && mint < MI && abs(mint - minm) >= 30 && fmatch != 3 && fmatch != 4)
-            micChange(n, fmatch, try3, dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-        }
-        else if (mode == 5) // p/c/n + u/b
-        {
-          minm = std::min(mics[0], std::min(mics[1], mics[2]));
-          mint = std::min(mics[3], mics[4]);
-          try3 = try1 == 2 ? (mint == mics[3] ? 3 : 4) : (mint == mics[4] ? 4 : 3);
-          if (mint * 3 < minm && mint < MI && abs(mint - minm) >= 30 && fmatch != 3 && fmatch != 4)
-            micChange(n, fmatch, try3, dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-        }
-        else if (mode == 6) // p/c + u + n + b
-        {
-          try2 = try1 == 2 ? 3 : 4;
-          try3 = try1 == 2 ? 0 : 2;
-          try4 = try2 == 3 ? 4 : 3;
-          minm = std::min(mics[1], mics[try1]);
-          if (mics[try2] * 3 < minm && mics[try2] < MI && abs(mics[try2] - minm) >= 30 && fmatch != try2 &&
-            fmatch != try3 && fmatch != try4)
-          {
-            micChange(n, fmatch, try2, dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-            minm = mics[try2];
-          }
-          else if (fmatch == try2) minm = std::min(mics[try2], minm);
-          if (mics[try3] * 3 < minm && mics[try3] < MI && abs(mics[try3] - minm) >= 30 && fmatch != try3 &&
-            fmatch != try4)
-          {
-            micChange(n, fmatch, try3, dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-            minm = mics[try3];
-          }
-          else if (fmatch == try3) minm = std::min(mics[try3], minm);
-          if (mics[try4] * 3 < minm && mics[try4] < MI && abs(mics[try4] - minm) >= 30 && fmatch != try4)
-            micChange(n, fmatch, try4, dst, prv, src, nxt,
-              fmatch, combed, dfrm);
-        }
-        if (micmatching == 3) { goto othertest; }
-      }
-    }
-  }
-  d2vfilm = d2vduplicate(fmatch, combed, n);
-  fileOut(fmatch, combed, d2vfilm, n, mics[fmatch], mics);
-  if (display) writeDisplay(dst, n, fmatch, combed, false, blockN[fmatch], xblocks,
-    d2vmatch, mics, prv, src, nxt);
+// Common tail of both exits: report the decision, annotate the frame, and hand dst over to the
+// caller. fromOvr distinguishes a match taken from the ovr file from one this frame worked out.
+const VSFrame *TFM::finishFrame(FrameMatchState &st, bool d2vfilm, bool fromOvr)
+{
+  fileOut(st.fmatch, st.combed, d2vfilm, st.n, st.mics[st.fmatch], st.mics);
+  if (display) writeDisplay(st.dst, st.n, st.fmatch, st.combed, fromOvr, st.blockN[st.fmatch],
+    st.xblocks, st.d2vmatch, st.mics, st.prv, st.src, st.nxt);
 //  if (debug)
 //  {
 //    char buft[20];
 //    if (mics[fmatch] < 0) sprintf(buft, "N/A");
 //    else sprintf(buft, "%d", mics[fmatch]);
-//    sprintf(buf, "TFM:  frame %d  - final match = %c  MIC = %s\n", n, MTC(fmatch), buft);
+//    sprintf(buf, "TFM:  frame %d  - final match = %c %s  MIC = %s\n", n, MTC(fmatch),
+//      fromOvr && d2vmatch ? "(D2V)" : fromOvr ? "(OVR)" : "", buft);
 //    OutputDebugString(buf);
 //    if (micout > 0 || (micmatching > 0 && mics[0] != -20 && mics[1] != -20 && mics[2] != -20
 //      && mics[3] != -20 && mics[4] != -20))
@@ -507,17 +112,447 @@ d2vCJump:
 //      OutputDebugString(buf);
 //    }
 //  }
-  if (usehints || PP >= 2) putFrameProperties(dst, fmatch, combed, d2vfilm, mics);
-  lastMatch.frame = n;
-  lastMatch.match = fmatch;
+  if (usehints || PP >= 2) putFrameProperties(st.dst, st.fmatch, st.combed, d2vfilm, st.mics);
+  lastMatch.frame = st.n;
+  lastMatch.match = st.fmatch;
   lastMatch.field = field;
-  lastMatch.combed = combed;
+  lastMatch.combed = st.combed;
 
-  vsapi->freeFrame(prv);
-  vsapi->freeFrame(src);
-  vsapi->freeFrame(nxt);
-  vsapi->freeFrame(tmp);
-  return dst;
+  vsapi->freeFrame(st.prv);
+  vsapi->freeFrame(st.src);
+  vsapi->freeFrame(st.nxt);
+  vsapi->freeFrame(st.tmp);
+  return st.dst;
+}
+
+// Mode 6 tries all four alternates in a fixed order and stops at the first one that is not
+// combed, so a frame only stays combed if every candidate does.
+void TFM::matchMode6(FrameMatchState &st)
+{
+  const int thrdT = field^order ? 0 : 2;
+  const int frthT = field^order ? 4 : 3;
+  int tcombed = 0;
+  int nmatch1, nmatch2, mmatch1, mmatch2;
+  bool isSC = true;
+
+  if (!slow) st.fmatch = compareFields(st.prv, st.src, st.nxt, 1, st.frstT, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+  else st.fmatch = compareFieldsSlow(st.prv, st.src, st.nxt, 1, st.frstT, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+  if (micmatching > 0)
+    checkmm(st.fmatch, 1, st.frstT, st.dst, st.dfrm, st.tmp, st.tfrm, st.prv, st.src, st.nxt, st.n,
+      st.blockN, st.xblocks, st.mics);
+  createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.fmatch, st.dfrm);
+  if (checkCombed(st.dst, st.n, st.fmatch, st.blockN, st.xblocks, st.mics, false))
+  {
+    tcombed = 2;
+    if (ubsco) isSC = checkSceneChange(st.prv, st.src, st.nxt, st.n);
+    if (isSC) createWeaveFrame(st.tmp, st.prv, st.src, st.nxt, st.scndT, st.tfrm);
+    if (isSC && !checkCombed(st.tmp, st.n, st.scndT, st.blockN, st.xblocks, st.mics, false))
+    {
+      st.fmatch = st.scndT;
+      tcombed = 0;
+      copyFrame(st.dst, st.tmp, vsapi);
+      st.dfrm = st.fmatch;
+    }
+    else
+    {
+      createWeaveFrame(st.tmp, st.prv, st.src, st.nxt, thrdT, st.tfrm);
+      if (!checkCombed(st.tmp, st.n, thrdT, st.blockN, st.xblocks, st.mics, false))
+      {
+        st.fmatch = thrdT;
+        tcombed = 0;
+        copyFrame(st.dst, st.tmp, vsapi);
+        st.dfrm = st.fmatch;
+      }
+      else
+      {
+        if (isSC) createWeaveFrame(st.tmp, st.prv, st.src, st.nxt, frthT, st.tfrm);
+        if (isSC && !checkCombed(st.tmp, st.n, frthT, st.blockN, st.xblocks, st.mics, false))
+        {
+          st.fmatch = frthT;
+          tcombed = 0;
+          copyFrame(st.dst, st.tmp, vsapi);
+          st.dfrm = st.fmatch;
+        }
+      }
+    }
+  }
+  if (st.combed == -1 && PP > 0) st.combed = tcombed;
+}
+
+// Mode 7 does not search: it weaves c and the parity alternate, and picks whichever is clean.
+// If both are clean the field order is flipped for the next frame; if neither is, the frame keeps
+// the previous frame's field and is reported combed.
+void TFM::matchMode7(FrameMatchState &st)
+{
+//  if (debug && lastMatch.frame != n && n != 0)
+//  {
+//    sprintf(buf, "TFM:  mode 7 - non-linear access detected!\n");
+//    OutputDebugString(buf);
+//  }
+  st.combed = 0;
+  int nmatch1, nmatch2, mmatch1, mmatch2;
+  if (!slow) st.fmatch = compareFields(st.prv, st.src, st.nxt, 1, st.frstT, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+  else st.fmatch = compareFieldsSlow(st.prv, st.src, st.nxt, 1, st.frstT, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+  createWeaveFrame(st.dst, st.prv, st.src, st.nxt, 1, st.dfrm);
+  const bool combed1 = checkCombed(st.dst, st.n, 1, st.blockN, st.xblocks, st.mics, false);
+  createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.frstT, st.dfrm);
+  const bool combed2 = checkCombed(st.dst, st.n, st.frstT, st.blockN, st.xblocks, st.mics, false);
+  if (!combed1 && !combed2)
+  {
+    createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.fmatch, st.dfrm);
+    if (field == 0) mode7_field = 1;
+    else mode7_field = 0;
+  }
+  else if (!combed2 && combed1)
+  {
+    createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.frstT, st.dfrm);
+    mode7_field = 1;
+    st.fmatch = st.frstT;
+  }
+  else if (!combed1 && combed2)
+  {
+    createWeaveFrame(st.dst, st.prv, st.src, st.nxt, 1, st.dfrm);
+    mode7_field = 0;
+    st.fmatch = 1;
+  }
+  else
+  {
+    createWeaveFrame(st.dst, st.prv, st.src, st.nxt, 1, st.dfrm);
+    st.combed = 2;
+    field = mode7_field;
+    st.fmatch = 1;
+  }
+}
+
+// Modes 0-5: match c against the parity alternate, then escalate through progressively wider
+// candidate sets while the result is still combed and the mode allows another try.
+bool TFM::matchModeNormal(FrameMatchState &st, VSFrameContext *frameCtx)
+{
+  int tcombed = -1;
+  int nmatch1, nmatch2, mmatch1, mmatch2, tmatch;
+
+  if (!slow)
+    st.fmatch = compareFields(st.prv, st.src, st.nxt, 1, st.frstT, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+  else
+    st.fmatch = compareFieldsSlow(st.prv, st.src, st.nxt, 1, st.frstT, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+  if (micmatching > 0)
+    checkmm(st.fmatch, 1, st.frstT, st.dst, st.dfrm, st.tmp, st.tfrm, st.prv, st.src, st.nxt, st.n,
+      st.blockN, st.xblocks, st.mics);
+  createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.fmatch, st.dfrm);
+  if (mode > 3 || (mode > 0 && checkCombed(st.dst, st.n, st.fmatch, st.blockN, st.xblocks, st.mics, false)))
+  {
+    if (mode < 4) tcombed = 2;
+    if (mode != 2)
+    {
+      if (!slow)
+        tmatch = compareFields(st.prv, st.src, st.nxt, st.fmatch, st.scndT, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+      else
+        tmatch = compareFieldsSlow(st.prv, st.src, st.nxt, st.fmatch, st.scndT, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+      if (micmatching > 0)
+        checkmm(tmatch, st.fmatch, st.scndT, st.dst, st.dfrm, st.tmp, st.tfrm, st.prv, st.src, st.nxt, st.n,
+          st.blockN, st.xblocks, st.mics);
+      createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.fmatch, st.dfrm);
+    }
+    else tmatch = st.scndT;
+    if (tmatch == st.scndT)
+    {
+      if (mode > 3)
+      {
+        st.fmatch = tmatch;
+        createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.fmatch, st.dfrm);
+      }
+      else if (mode != 2 || !ubsco || checkSceneChange(st.prv, st.src, st.nxt, st.n))
+      {
+        createWeaveFrame(st.tmp, st.prv, st.src, st.nxt, tmatch, st.tfrm);
+        if (!checkCombed(st.tmp, st.n, tmatch, st.blockN, st.xblocks, st.mics, false))
+        {
+          st.fmatch = tmatch;
+          tcombed = 0;
+          copyFrame(st.dst, st.tmp, vsapi);
+          st.dfrm = st.fmatch;
+        }
+      }
+    }
+    // modes 3 and 5 get one more try, against the two deinterlaced-c matches
+    if ((mode == 3 && tcombed == 2) ||
+      (mode == 5 && checkCombed(st.dst, st.n, st.fmatch, st.blockN, st.xblocks, st.mics, false)))
+    {
+      tcombed = 2;
+      if (!ubsco || checkSceneChange(st.prv, st.src, st.nxt, st.n))
+      {
+        if (!slow)
+          tmatch = compareFields(st.prv, st.src, st.nxt, 3, 4, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+        else
+          tmatch = compareFieldsSlow(st.prv, st.src, st.nxt, 3, 4, nmatch1, nmatch2, mmatch1, mmatch2, st.n);
+        if (micmatching > 0)
+          checkmm(tmatch, 3, 4, st.dst, st.dfrm, st.tmp, st.tfrm, st.prv, st.src, st.nxt, st.n,
+            st.blockN, st.xblocks, st.mics);
+        createWeaveFrame(st.tmp, st.prv, st.src, st.nxt, tmatch, st.tfrm);
+        if (!checkCombed(st.tmp, st.n, tmatch, st.blockN, st.xblocks, st.mics, false))
+        {
+          st.fmatch = tmatch;
+          tcombed = 0;
+          copyFrame(st.dst, st.tmp, vsapi);
+          st.dfrm = st.fmatch;
+        }
+        else
+          createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.fmatch, st.dfrm);
+      }
+    }
+    if (mode == 5 && tcombed == -1) tcombed = 0;
+  }
+  if ((mode == 1 || mode == 2 || mode == 3) && tcombed == -1) tcombed = 0;
+  if (st.combed == -1 && PP > 0) st.combed = tcombed;
+  if (PP > 0 && st.combed == -1)
+  {
+    if (checkCombed(st.dst, st.n, st.fmatch, st.blockN, st.xblocks, st.mics, false)) st.combed = 2;
+    else st.combed = 0;
+  }
+  if (st.dfrm != st.fmatch)
+  {
+    vsapi->setFilterError("TFM: internal error (dfrm!=fmatch). Please report this.", frameCtx);
+    return false;
+  }
+  return true;
+}
+
+// micmatching 1 (and the second half of 3): if one match is a clear mic winner over every other,
+// switch to it, regardless of which candidate set the mode would normally consider. order1/order2
+// are the mic values and their match codes, sorted ascending.
+void TFM::micMatchBestOverall(FrameMatchState &st, const int *order1, const int *order2)
+{
+  if (order1[0] * 3 < order1[1] && abs(order1[0] - order1[1]) > 15 &&
+    order1[0] < MI && order2[0] != st.fmatch &&
+    (((field^order) && (order2[0] == 1 || order2[0] == 2 || order2[0] == 3)) ||
+    (!(field^order) && (order2[0] == 0 || order2[0] == 1 || order2[0] == 4))))
+  {
+    // Only trust lastMatch when frames are guaranteed to arrive in order.
+    const int lmatch = (linearAccess && lastMatch.frame == st.n - 1) ? lastMatch.match : -20;
+    const bool xfield = (field^order) != 0;
+    if (!((order2[0] == 4 && lmatch == 0 && !xfield && (order2[1] == 0 || order2[2] == 0)) ||
+      (order2[0] == 3 && lmatch == 2 && xfield && (order2[1] == 2 || order2[2] == 2))))
+    {
+      micChange(st.n, st.fmatch, order2[0], st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+    }
+  }
+  if (order1[0] * 4 < order1[1] && abs(order1[0] - order1[1]) > 30 &&
+    order1[0] < MI && order1[1] >= MI && order2[0] != st.fmatch)
+  {
+    micChange(st.n, st.fmatch, order2[0], st.dst, st.prv, st.src, st.nxt,
+      st.fmatch, st.combed, st.dfrm);
+  }
+}
+
+// micmatching 2 and 3: consider only the matches the current mode would have searched, and switch
+// to one whose mic is far below the best of the others.
+void TFM::micMatchByMode(FrameMatchState &st)
+{
+  const int try1 = field^order ? 2 : 0;
+  int try2, minm, mint, try3, try4;
+  if (mode == 1) // p/c + n
+  {
+    try2 = try1 == 2 ? 0 : 2;
+    minm = std::min(st.mics[1], st.mics[try1]);
+    if (st.mics[try2] * 3 < minm && st.mics[try2] < MI && abs(st.mics[try2] - minm) >= 30 && try2 != st.fmatch)
+      micChange(st.n, st.fmatch, try2, st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+  }
+  else if (mode == 2) // p/c + u
+  {
+    try2 = try1 == 2 ? 3 : 4;
+    minm = std::min(st.mics[1], st.mics[try1]);
+    if (st.mics[try2] * 3 < minm && st.mics[try2] < MI && abs(st.mics[try2] - minm) >= 30 && try2 != st.fmatch)
+      micChange(st.n, st.fmatch, try2, st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+  }
+  else if (mode == 3) // p/c + n + u/b
+  {
+    try2 = try1 == 2 ? 0 : 2;
+    minm = std::min(st.mics[1], st.mics[try1]);
+    mint = std::min(st.mics[3], st.mics[4]);
+    try3 = try1 == 2 ? (mint == st.mics[3] ? 3 : 4) : (mint == st.mics[4] ? 4 : 3);
+    if (st.mics[try2] * 3 < minm && st.mics[try2] < MI && abs(st.mics[try2] - minm) >= 30 && try2 != st.fmatch &&
+      st.fmatch != 3 && st.fmatch != 4)
+    {
+      micChange(st.n, st.fmatch, try2, st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+      minm = st.mics[try2];
+    }
+    else if (st.fmatch == try2) minm = std::min(st.mics[try2], minm);
+    if (mint * 3 < minm && mint < MI && abs(mint - minm) >= 30 && st.fmatch != 3 && st.fmatch != 4)
+      micChange(st.n, st.fmatch, try3, st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+  }
+  else if (mode == 5) // p/c/n + u/b
+  {
+    minm = std::min(st.mics[0], std::min(st.mics[1], st.mics[2]));
+    mint = std::min(st.mics[3], st.mics[4]);
+    try3 = try1 == 2 ? (mint == st.mics[3] ? 3 : 4) : (mint == st.mics[4] ? 4 : 3);
+    if (mint * 3 < minm && mint < MI && abs(mint - minm) >= 30 && st.fmatch != 3 && st.fmatch != 4)
+      micChange(st.n, st.fmatch, try3, st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+  }
+  else if (mode == 6) // p/c + u + n + b
+  {
+    try2 = try1 == 2 ? 3 : 4;
+    try3 = try1 == 2 ? 0 : 2;
+    try4 = try2 == 3 ? 4 : 3;
+    minm = std::min(st.mics[1], st.mics[try1]);
+    if (st.mics[try2] * 3 < minm && st.mics[try2] < MI && abs(st.mics[try2] - minm) >= 30 && st.fmatch != try2 &&
+      st.fmatch != try3 && st.fmatch != try4)
+    {
+      micChange(st.n, st.fmatch, try2, st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+      minm = st.mics[try2];
+    }
+    else if (st.fmatch == try2) minm = std::min(st.mics[try2], minm);
+    if (st.mics[try3] * 3 < minm && st.mics[try3] < MI && abs(st.mics[try3] - minm) >= 30 && st.fmatch != try3 &&
+      st.fmatch != try4)
+    {
+      micChange(st.n, st.fmatch, try3, st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+      minm = st.mics[try3];
+    }
+    else if (st.fmatch == try3) minm = std::min(st.mics[try3], minm);
+    if (st.mics[try4] * 3 < minm && st.mics[try4] < MI && abs(st.mics[try4] - minm) >= 30 && st.fmatch != try4)
+      micChange(st.n, st.fmatch, try4, st.dst, st.prv, st.src, st.nxt,
+        st.fmatch, st.combed, st.dfrm);
+  }
+}
+
+// Fill in any missing mic values, then let micmatching second-guess the match the search picked.
+void TFM::applyMicMatching(FrameMatchState &st)
+{
+  if (!(micout > 0 || (micmatching > 0 && st.mics[st.fmatch] > 15 && mode != 7 &&
+    !(micmatching == 2 && (mode == 0 || mode == 4)) &&
+    (!mmsco || checkSceneChange(st.prv, st.src, st.nxt, st.n)))))
+    return;
+
+  fillMissingMics(st, micmatching > 0);
+
+  if (!(micmatching > 0 && mode != 7 && st.mics[st.fmatch] > 15 &&
+    (!mmsco || checkSceneChange(st.prv, st.src, st.nxt, st.n))))
+    return;
+
+  // insertion sort the five mics ascending, carrying their match codes along
+  int order1[5], order2[5] = { 0, 1, 2, 3, 4 };
+  for (int i = 0; i < 5; ++i) order1[i] = st.mics[i];
+  for (int i = 1; i < 5; ++i)
+  {
+    int j = i;
+    const int temp1 = order1[j];
+    const int temp2 = order2[j];
+    while (j > 0 && order1[j - 1] > temp1)
+    {
+      order1[j] = order1[j - 1];
+      order2[j] = order2[j - 1];
+      --j;
+    }
+    order1[j] = temp1;
+    order2[j] = temp2;
+  }
+
+  // 3 is "by mode, then best overall"; the sort above is deliberately not redone in between.
+  if (micmatching == 1) micMatchBestOverall(st, order1, order2);
+  else if (micmatching == 2 || micmatching == 3)
+  {
+    micMatchByMode(st);
+    if (micmatching == 3) micMatchBestOverall(st, order1, order2);
+  }
+}
+
+const VSFrame *TFM::GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
+{
+  if (n < 0) n = 0;
+  else if (n > nfrms) n = nfrms;
+
+  if (activationReason == arInitial) {
+      vsapi->requestFrameFilter(std::max(0, n - 1), child, frameCtx);
+      vsapi->requestFrameFilter(n, child, frameCtx);
+      vsapi->requestFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
+      return nullptr;
+  } else if (activationReason != arAllFramesReady) {
+      return nullptr;
+  }
+
+  FrameMatchState st;
+  st.n = n;
+  st.prv = vsapi->getFrameFilter(std::max(0, n - 1), child, frameCtx);
+  st.src = vsapi->getFrameFilter(n, child, frameCtx);
+  st.nxt = vsapi->getFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
+
+  order = order_origSaved;
+  mode = mode_origSaved;
+  field = field_origSaved;
+  PP = PP_origSaved;
+  MI = MI_origSaved;
+  getSettingOvr(n); // process overrides
+
+  if (!resolveFieldOrder(st, frameCtx))
+  {
+    vsapi->freeFrame(st.prv);
+    vsapi->freeFrame(st.src);
+    vsapi->freeFrame(st.nxt);
+    return nullptr;
+  }
+
+  st.dst = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, st.src, core);
+  st.tmp = vsapi->newVideoFrame(&vi->format, vi->width, vi->height, nullptr, core);
+
+//  if (debug)
+//  {
+//    sprintf(buf, "TFM:  ----------------------------------------\n");
+//    OutputDebugString(buf);
+//  }
+
+  // An ovr/input file may name the match outright, in which case there is nothing to search for.
+  // The one exception is a d2v-derived match that turns out to comb: that gets discarded and the
+  // normal search runs instead.
+  if (getMatchOvr(n, st.fmatch, st.combed, st.d2vmatch,
+    flags == 5 ? checkSceneChange(st.prv, st.src, st.nxt, n) : false))
+  {
+    createWeaveFrame(st.dst, st.prv, st.src, st.nxt, st.fmatch, st.dfrm);
+    bool useOvr = true;
+    if (PP > 0 && st.combed == -1)
+    {
+      if (checkCombed(st.dst, n, st.fmatch, st.blockN, st.xblocks, st.mics, false))
+      {
+        if (st.d2vmatch)
+        {
+          st.d2vmatch = false;
+          for (int j = 0; j < 5; ++j)
+            st.mics[j] = -20;
+          useOvr = false;
+        }
+        else st.combed = 2;
+      }
+      else st.combed = 0;
+    }
+    if (useOvr)
+    {
+      const bool d2vfilm = d2vduplicate(st.fmatch, st.combed, n);
+      if (micout > 0) fillMissingMics(st, false);
+      return finishFrame(st, d2vfilm, true);
+    }
+  }
+
+  if (mode == 6) matchMode6(st);
+  else if (mode == 7) matchMode7(st);
+  else if (!matchModeNormal(st, frameCtx))
+  {
+    vsapi->freeFrame(st.prv);
+    vsapi->freeFrame(st.src);
+    vsapi->freeFrame(st.nxt);
+    vsapi->freeFrame(st.dst);
+    vsapi->freeFrame(st.tmp);
+    return nullptr;
+  }
+
+  applyMicMatching(st);
+
+  const bool d2vfilm = d2vduplicate(st.fmatch, st.combed, n);
+  return finishFrame(st, d2vfilm, false);
 }
 
 void TFM::checkmm(int &cmatch, int m1, int m2, VSFrame *dst, int &dfrm, VSFrame *tmp, int &tfrm,

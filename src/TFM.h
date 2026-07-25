@@ -142,6 +142,34 @@ private:
 
   void fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int mics[5]);
 
+  // Everything one GetFrame call threads between its steps. The three mode branches and the mic
+  // post-pass all read and write this, so it travels as one bundle rather than as a dozen
+  // in/out parameters.
+  struct FrameMatchState
+  {
+    const VSFrame *prv, *src, *nxt;
+    VSFrame *dst, *tmp;
+    int n;
+    int frstT, scndT;           // the alternate matches to try, per mode and field/order parity
+    int fmatch = -20;
+    int dfrm = -20, tfrm = -20; // which match dst and tmp currently hold
+    int combed = -1;
+    int xblocks = -20;
+    bool d2vmatch = false;
+    int mics[5] = { -20, -20, -20, -20, -20 };
+    int blockN[5] = { -20, -20, -20, -20, -20 };
+  };
+
+  bool resolveFieldOrder(FrameMatchState &st, VSFrameContext *frameCtx);
+  void fillMissingMics(FrameMatchState &st, bool allMatches);
+  const VSFrame *finishFrame(FrameMatchState &st, bool d2vfilm, bool fromOvr);
+  void matchMode6(FrameMatchState &st);
+  void matchMode7(FrameMatchState &st);
+  bool matchModeNormal(FrameMatchState &st, VSFrameContext *frameCtx);
+  void micMatchBestOverall(FrameMatchState &st, const int *order1, const int *order2);
+  void micMatchByMode(FrameMatchState &st);
+  void applyMicMatching(FrameMatchState &st);
+
   // Shared epilogue of the three compareFields variants.
   int decideMatch(int match1, int match2, uint64_t accumPc, uint64_t accumNc,
     uint64_t accumPm, uint64_t accumNm, int firstRung, int bits_per_pixel,
