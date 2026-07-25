@@ -165,17 +165,92 @@ void TDecimate::mode2MarkDecFrames(int cycleF)
   }
 }
 
+// Mark up to (m - dec) more frames of the block starting at x for removal, preferring frames
+// that are clear local minima -- much lower than the nearest not-yet-dropped frame on each side
+// -- and falling back to simply the lowest metrics in the block. Shared by both removeMinN
+// overloads, which differ only in which metric array they score and where their scratch lives.
+void TDecimate::markLowestMetrics(int x, int m, int stop2, int &dec,
+  const std::vector<uint64_t> &metrics, uint64_t *metricsT, int *orderT)
+{
+  int t = 0;
+  for (int i = 0; i < stop2; ++i)
+  {
+    if (mode2_decA[x + i] == 0)
+    {
+      int v = 1;
+      double cM = (metrics[(x + i) << 1] * 100.0) / MAX_DIFF;
+      double pM = -20.0, nM = -20.0;
+      while (pM < 0 || nM < 0)
+      {
+        if (pM < 0)
+        {
+          if (x + i - v >= 0)
+          {
+            if (mode2_decA[x + i - v] != 1)
+              pM = (metrics[(x + i - v) << 1] * 100.0) / MAX_DIFF;
+          }
+          else pM = 1.0;
+        }
+        if (nM < 0)
+        {
+          if (x + i + v <= nfrms)
+          {
+            if (mode2_decA[x + i + v] != 1)
+              nM = (metrics[(x + i + v) << 1] * 100.0) / MAX_DIFF;
+          }
+          else nM = 1.0;
+        }
+        ++v;
+      }
+      if (pM >= 3.0 && nM >= 3.0 && cM < 3.0 && pM*0.5 > cM && nM*0.5 > cM)
+      {
+        orderT[t] = i;
+        metricsT[t] = (int)(std::min(pM - cM, nM - cM)*10000.0 + 0.5);
+        ++t;
+      }
+    }
+  }
+  if (t > 0)
+  {
+    sortMetrics(metricsT, orderT, t);
+    for (int i = 0; i < t && dec < m; ++i)
+    {
+      if (mode2_decA[x + orderT[t - 1 - i]] != 1)
+      {
+        mode2_decA[x + orderT[t - 1 - i]] = 1;
+        ++dec;
+      }
+    }
+  }
+  if (dec >= m) return;
+  for (int i = 0; i < stop2; ++i)
+  {
+    orderT[i] = i;
+    metricsT[i] = metrics[(x + i) << 1];
+  }
+  sortMetrics(metricsT, orderT, stop2);
+  for (int i = 0; i < stop2 && dec < m; ++i)
+  {
+    if (mode2_decA[x + orderT[i]] != 1)
+    {
+      mode2_decA[x + orderT[i]] = 1;
+      ++dec;
+    }
+  }
+}
+
 void TDecimate::removeMinN(int m, int n, int start, int stop)
 {
   for (int x = start; x < stop; x += n)
   {
-    int dec = 0, t = 0, stop2 = n;
+    int dec = 0, stop2 = n;
     if (x + n - 1 > nfrms)
     {
       m = (int)(double((nfrms - x + 1)*m) / double(n) + 0.5);
       if (m < 1) continue;
       stop2 = nfrms - x + 1;
     }
+    // frames the cycle already knows are duplicates go first
     if (curr.dupCount > 0)
     {
       int b = x - start;
@@ -191,70 +266,7 @@ void TDecimate::removeMinN(int m, int n, int start, int stop)
       }
       if (dec >= m) continue;
     }
-    for (int i = 0; i < stop2; ++i)
-    {
-      if (mode2_decA[x + i] == 0)
-      {
-        int v = 1;
-        double cM = (metricsOutArray[(x + i) << 1] * 100.0) / MAX_DIFF;
-        double pM = -20.0, nM = -20.0;
-        while (pM < 0 || nM < 0)
-        {
-          if (pM < 0)
-          {
-            if (x + i - v >= 0)
-            {
-              if (mode2_decA[x + i - v] == 0 || mode2_decA[x + i - v] == -20)
-                pM = (metricsOutArray[(x + i - v) << 1] * 100.0) / MAX_DIFF;
-            }
-            else pM = 1.0;
-          }
-          if (nM < 0)
-          {
-            if (x + i + v <= nfrms)
-            {
-              if (mode2_decA[x + i + v] == 0 || mode2_decA[x + i + v] == -20)
-                nM = (metricsOutArray[(x + i + v) << 1] * 100.0) / MAX_DIFF;
-            }
-            else nM = 1.0;
-          }
-          ++v;
-        }
-        if (pM >= 3.0 && nM >= 3.0 && cM < 3.0 && pM*0.5 > cM && nM*0.5 > cM)
-        {
-          mode2_order[t] = i;
-          mode2_metrics[t] = (int)(std::min(pM - cM, nM - cM)*10000.0 + 0.5);
-          ++t;
-        }
-      }
-    }
-    if (t > 0)
-    {
-      sortMetrics(mode2_metrics.data(), mode2_order.data(), t);
-      for (int i = 0; i < t && dec < m; ++i)
-      {
-        if (mode2_decA[x + mode2_order[t - 1 - i]] != 1)
-        {
-          mode2_decA[x + mode2_order[t - 1 - i]] = 1;
-          ++dec;
-        }
-      }
-    }
-    if (dec >= m) continue;
-    for (int i = 0; i < stop2; ++i)
-    {
-      mode2_order[i] = i;
-      mode2_metrics[i] = metricsOutArray[(x + i) << 1];
-    }
-    sortMetrics(mode2_metrics.data(), mode2_order.data(), stop2);
-    for (int i = 0; i < stop2 && dec < m; ++i)
-    {
-      if (mode2_decA[x + mode2_order[i]] != 1)
-      {
-        mode2_decA[x + mode2_order[i]] = 1;
-        ++dec;
-      }
-    }
+    markLowestMetrics(x, m, stop2, dec, metricsOutArray, mode2_metrics.data(), mode2_order.data());
   }
 }
 
@@ -262,13 +274,14 @@ void TDecimate::removeMinN(int m, int n, uint64_t *metricsT, int *orderT, int &o
 {
   for (int x = 0; x < vi.numFrames; x += n)
   {
-    int dec = 0, t = 0, stop2 = n;
+    int dec = 0, stop2 = n;
     if (x + n - 1 > nfrms)
     {
       m = (int)(double((nfrms - x + 1)*m) / double(n) + 0.5);
       if (m < 1) continue;
       stop2 = nfrms - x + 1;
     }
+    // frames the ovr file asked to drop go first
     if (ovrC > 0 && ovrArray.size())
     {
       for (int i = 0; i < stop2; ++i)
@@ -283,70 +296,7 @@ void TDecimate::removeMinN(int m, int n, uint64_t *metricsT, int *orderT, int &o
       }
       if (dec >= m) continue;
     }
-    for (int i = 0; i < stop2; ++i)
-    {
-      if (mode2_decA[x + i] == 0)
-      {
-        int v = 1;
-        double cM = (metricsArray[(x + i) << 1] * 100.0) / MAX_DIFF;
-        double pM = -20.0, nM = -20.0;
-        while (pM < 0 || nM < 0)
-        {
-          if (pM < 0)
-          {
-            if (x + i - v >= 0)
-            {
-              if (mode2_decA[x + i - v] != 1)
-                pM = (metricsArray[(x + i - v) << 1] * 100.0) / MAX_DIFF;
-            }
-            else pM = 1.0;
-          }
-          if (nM < 0)
-          {
-            if (x + i + v <= nfrms)
-            {
-              if (mode2_decA[x + i + v] != 1)
-                nM = (metricsArray[(x + i + v) << 1] * 100.0) / MAX_DIFF;
-            }
-            else nM = 1.0;
-          }
-          ++v;
-        }
-        if (pM >= 3.0 && nM >= 3.0 && cM < 3.0 && pM*0.5 > cM && nM*0.5 > cM)
-        {
-          orderT[t] = i;
-          metricsT[t] = (int)(std::min(pM - cM, nM - cM)*10000.0 + 0.5);
-          ++t;
-        }
-      }
-    }
-    if (t > 0)
-    {
-      sortMetrics(metricsT, orderT, t);
-      for (int i = 0; i < t && dec < m; ++i)
-      {
-        if (mode2_decA[x + orderT[t - 1 - i]] != 1)
-        {
-          mode2_decA[x + orderT[t - 1 - i]] = 1;
-          ++dec;
-        }
-      }
-    }
-    if (dec >= m) continue;
-    for (int i = 0; i < stop2; ++i)
-    {
-      orderT[i] = i;
-      metricsT[i] = metricsArray[(x + i) << 1];
-    }
-    sortMetrics(metricsT, orderT, stop2);
-    for (int i = 0; i < stop2 && dec < m; ++i)
-    {
-      if (mode2_decA[x + orderT[i]] != 1)
-      {
-        mode2_decA[x + orderT[i]] = 1;
-        ++dec;
-      }
-    }
+    markLowestMetrics(x, m, stop2, dec, metricsArray, metricsT, orderT);
   }
 }
 

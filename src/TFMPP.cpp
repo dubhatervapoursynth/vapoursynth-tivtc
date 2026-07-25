@@ -756,8 +756,8 @@ void TFMPP::getSetOvr(int n)
   {
     if (n >= setArray[x + 1] && n <= setArray[x + 2])
     {
-      if (setArray[x] == 80) PP = setArray[x + 3]; // P
-      else if (setArray[x] == 77) mthresh = setArray[x + 3]; // M
+      if (setArray[x] == 'P') PP = setArray[x + 3]; // P
+      else if (setArray[x] == 'M') mthresh = setArray[x + 3]; // M
     }
   }
 }
@@ -770,7 +770,7 @@ int TFMPP::getEffectivePP(int n) const
   int pp = PP_origSaved;
   for (int x = 0; x < (int)setArray.size(); x += 4)
   {
-    if (n >= setArray[x + 1] && n <= setArray[x + 2] && setArray[x] == 80) // P override
+    if (n >= setArray[x + 1] && n <= setArray[x + 2] && setArray[x] == 'P') // P override
       pp = setArray[x + 3];
   }
   return pp;
@@ -1272,7 +1272,7 @@ TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _disp
       countOvrS = 0;
       while (fgets(linein, 1024, f.get()) != nullptr)
       {
-        if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == ';' || linein[0] == '#')
+        if (isBlankOrCommentLine(linein))
           continue;
         linep = linein;
         while (*linep != 'M' && *linep != 'P' && *linep != 0) linep++;
@@ -1287,7 +1287,7 @@ TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _disp
       {
         while (fgets(linein, 1024, f.get()) != nullptr)
         {
-          if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == ';' || linein[0] == '#')
+          if (isBlankOrCommentLine(linein))
             continue;
           linep = linein;
           while (*linep != 0 && *linep != ' ' && *linep != ',') linep++;
@@ -1321,7 +1321,7 @@ TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _disp
                   linep++;
                   if (*linep == 0) continue;
                   if (sscanf(linep, "%d", &b) != 1) continue;
-                  if (q == 80 && (b < 0 || b > 7))
+                  if (q == 'P' && (b < 0 || b > 7))
                   {
                     throw TIVTCError("TFMPP:  ovr input error (bad PP value)!");
                   }
@@ -1360,7 +1360,7 @@ TFMPP::TFMPP(VSNode *_child, int _PP, int _mthresh, const char* _ovr, bool _disp
                   linep++;
                   if (*linep == 0) continue;
                   if (sscanf(linep, "%d", &b) != 1) continue;
-                  if (q == 80 && (b < 0 || b > 7))
+                  if (q == 'P' && (b < 0 || b > 7))
                   {
                     throw TIVTCError("TFMPP:  ovr input error (bad PP value)!");
                   }

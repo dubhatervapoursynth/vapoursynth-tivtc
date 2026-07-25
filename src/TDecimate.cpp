@@ -1114,10 +1114,7 @@ int TDecimate::getTFMFrameProperties(const VSFrame *src, int& d2vfilm) const
 
   if (match != -200 && field != 0)
   {
-    if (match == 0) match = 3;
-    else if (match == 2) match = 4;
-    else if (match == 3) match = 0;
-    else if (match == 4) match = 2;
+    match = flipMatchFieldOrder(match);
   }
 
   return match;
@@ -2934,7 +2931,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
       int w;
       while (fgets(linein, 1024, f) != nullptr)
       {
-        if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == '#' || linein[0] == ';')
+        if (isBlankOrCommentLine(linein))
           continue;
         linep = linein;
         while (*linep != ' ' && *linep != 0 && *linep != 'c') linep++;
@@ -3087,7 +3084,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
       int q, w, z, count = 0;
       while (fgets(linein, 1024, f) != 0)
       {
-        if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == ';' || linein[0] == '#')
+        if (isBlankOrCommentLine(linein))
           continue;
         linep = linein;
         while (*linep != 0 && *linep != ' ' && *linep != ',') linep++;
@@ -3117,8 +3114,8 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
             {
               linep++;
               q = *linep;
-              if (q == 45) q = DROP_FRAME;
-              else if (q == 43) q = KEEP_FRAME;
+              if (q == '-') q = DROP_FRAME;
+              else if (q == '+') q = KEEP_FRAME;
               else
               {
                 fclose(f);
@@ -3145,8 +3142,8 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
             {
               linep++;
               q = *linep;
-              if (q == 102) q = FILM;
-              else if (q == 118) q = VIDEO;
+              if (q == 'f') q = FILM;
+              else if (q == 'v') q = VIDEO;
               else
               {
                 fclose(f);
@@ -3180,8 +3177,8 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
             {
               linep++;
               q = *linep;
-              if (q == 102) q = FILM;
-              else if (q == 118) q = VIDEO;
+              if (q == 'f') q = FILM;
+              else if (q == 'v') q = VIDEO;
               else
               {
                 fclose(f);
@@ -3216,8 +3213,8 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
               while ((*linep == '-' || *linep == '+') && (z + count <= w))
               {
                 q = *linep;
-                if (q == 45) q = DROP_FRAME;
-                else if (q == 43) q = KEEP_FRAME;
+                if (q == '-') q = DROP_FRAME;
+                else if (q == '+') q = KEEP_FRAME;
                 else
                 {
                   fclose(f);
@@ -3239,8 +3236,8 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
             else
             {
               q = *linep;
-              if (q == 45) q = DROP_FRAME;
-              else if (q == 43) q = KEEP_FRAME;
+              if (q == '-') q = DROP_FRAME;
+              else if (q == '+') q = KEEP_FRAME;
               else
               {
                 fclose(f);
@@ -3277,7 +3274,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
       fieldt = firstLine = 0;
       while (fgets(linein, 1024, f) != nullptr)
       {
-        if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == ';' || linein[0] == '#')
+        if (isBlankOrCommentLine(linein))
           continue;
         ++firstLine;
         linep = linein;
@@ -3302,8 +3299,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
           z = -1; // a failed parse must fail the range check below
           sscanf(linein, "%d", &z);
           linep = linein;
-          while (*linep != 'p' && *linep != 'c' && *linep != 'n' && *linep != 'u' &&
-            *linep != 'b' && *linep != 'l' && *linep != 'h' && *linep != 0) linep++;
+          linep = skipToMatchChar(linep);
           if (*linep != 0)
           {
             if (z<0 || z>nfrms)
@@ -3317,15 +3313,8 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
             if (*linep != 0)
             {
               linep++;
-              q = *linep;
-              if (q == 112) q = 0;
-              else if (q == 99) q = 1;
-              else if (q == 110) q = 2;
-              else if (q == 98) q = 3;
-              else if (q == 117) q = 4;
-              else if (q == 108) q = 5;
-              else if (q == 104) q = 6;
-              else
+              q = decodeMatchChar(*linep);
+              if (q < 0)
               {
                 fclose(f);
                 f = nullptr;
@@ -3333,10 +3322,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
               }
               if (fieldt != 0)
               {
-                if (q == 0) q = 3;
-                else if (q == 2) q = 4;
-                else if (q == 3) q = 0;
-                else if (q == 4) q = 2;
+                q = flipMatchFieldOrder(q);
               }
               d2vmarked = micmarked = false;
               linep++;
@@ -3344,11 +3330,11 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
               if (*linep != 0 && *linep != 10)
               {
                 r = *linep;
-                if (r == 45 && useTFMPP)
+                if (r == '-' && useTFMPP)
                 {
                   // intentional noop q = q; 
                 }
-                else if (r == 43 && q < 5 && useTFMPP)
+                else if (r == '+' && q < 5 && useTFMPP)
                 {
                   if (fieldt == 0) q = 5;
                   else q = 6;

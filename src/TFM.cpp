@@ -673,6 +673,45 @@ void TFM::writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
 }
 
 // override from ovr file
+// Validate an ovr settings override and append it to setArray as the 4-tuple
+// {specifier, first frame, last frame, value}. 'f' field and 'o' order are tri-state, 'm' mode
+// and 'P' PP are 0..7, and 'i' MI takes any value. Both the single-frame and the frame-range
+// forms of the ovr syntax end up here; they differ only in whether last == first.
+void TFM::appendSetting(int specifier, int first, int last, int value, int &i)
+{
+  switch (specifier)
+  {
+  case 'f':
+    if (value != 0 && value != 1 && value != -1)
+    {
+      throw TIVTCError("TFM:  ovr input error (bad field value)!");
+    }
+    break;
+  case 'o':
+    if (value != 0 && value != 1 && value != -1)
+    {
+      throw TIVTCError("TFM:  ovr input error (bad order value)!");
+    }
+    break;
+  case 'm':
+    if (value < 0 || value > 7)
+    {
+      throw TIVTCError("TFM:  ovr input error (bad mode value)!");
+    }
+    break;
+  case 'P':
+    if (value < 0 || value > 7)
+    {
+      throw TIVTCError("TFM:  ovr input error (bad PP value)!");
+    }
+    break;
+  }
+  setArray[i] = specifier; ++i;
+  setArray[i] = first; ++i;
+  setArray[i] = last; ++i;
+  setArray[i] = value; ++i;
+}
+
 void TFM::getSettingOvr(int n)
 {
   if (setArray.size() == 0) return;
@@ -680,11 +719,11 @@ void TFM::getSettingOvr(int n)
   {
     if (n >= setArray[x + 1] && n <= setArray[x + 2])
     {
-      if (setArray[x] == 111) order = setArray[x + 3]; // o
-      else if (setArray[x] == 109) mode = setArray[x + 3]; // m
-      else if (setArray[x] == 102) field = setArray[x + 3]; // f
-      else if (setArray[x] == 80) PP = setArray[x + 3]; // P
-      else if (setArray[x] == 105) MI = setArray[x + 3]; // i
+      if (setArray[x] == 'o') order = setArray[x + 3]; // o
+      else if (setArray[x] == 'm') mode = setArray[x + 3]; // m
+      else if (setArray[x] == 'f') field = setArray[x + 3]; // f
+      else if (setArray[x] == 'P') PP = setArray[x + 3]; // P
+      else if (setArray[x] == 'i') MI = setArray[x + 3]; // i
     }
   }
 }
@@ -709,10 +748,7 @@ bool TFM::getMatchOvr(int n, int &match, int &combed, bool &d2vmatch, bool isSC)
       match = temp;
       if (field != fieldO)
       {
-        if (match == 0) match = 3;
-        else if (match == 2) match = 4;
-        else if (match == 3) match = 0;
-        else if (match == 4) match = 2;
+        match = flipMatchFieldOrder(match);
       }
       if (match == 5) { combed = 5; match = 1; field = 0; }
       else if (match == 6) { combed = 5; match = 1; field = 1; }
@@ -793,10 +829,7 @@ void TFM::fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int m
   {
     if (field != fieldO)
     {
-      if (match == 0) match = 3;
-      else if (match == 2) match = 4;
-      else if (match == 3) match = 0;
-      else if (match == 4) match = 2;
+      match = flipMatchFieldOrder(match);
     }
     if (match == 1 && combed > 1 && field == 0) match = 5;
     else if (match == 1 && combed > 1 && field == 1) match = 6;
@@ -826,6 +859,93 @@ int TFM::compareFields(const VSFrame *prv, const VSFrame *src, const VSFrame *nx
     return compareFields_core<uint16_t>(prv, src, nxt, match1, match2, norm1, norm2, mtn1, mtn2, n);
 }
 
+
+// Once the accumulators are in, the three compareFields variants pick the winner the same way.
+// The "mtn" ladder: if either motion metric reaches `minimum` and the two differ by more than
+// num:den, the smaller one wins. The variants use progressively longer prefixes of one ladder --
+// slow=2 starts lowest and so is the most willing to trust the motion metrics over the plain ones.
+namespace {
+struct MtnRung { int minimum, num, den; };
+const MtnRung kMtnLadder[] = {
+  {  250, 4, 1 }, // slow=2 starts here
+  {  375, 3, 1 }, // slow=1 starts here
+  {  500, 2, 1 }, // plain compareFields starts here
+  { 1000, 3, 2 },
+  { 2000, 5, 4 },
+};
+constexpr int kMtnLadderSize = int(sizeof(kMtnLadder) / sizeof(kMtnLadder[0]));
+} // namespace
+
+// firstRung selects the variant: 2 = compareFields, 1 = slow 1, 0 = slow 2.
+int TFM::decideMatch(int match1, int match2, uint64_t accumPc, uint64_t accumNc,
+  uint64_t accumPm, uint64_t accumNm, int firstRung, int bits_per_pixel,
+  int &norm1, int &norm2, int &mtn1, int &mtn2) const
+{
+  // High bit depth: scale back to the 8 bit range rather than widening every threshold.
+  const double factor = 1.0 / (1 << (bits_per_pixel - 8));
+
+  norm1 = (int)((accumPc / 6.0 * factor) + 0.5);
+  norm2 = (int)((accumNc / 6.0 * factor) + 0.5);
+  mtn1 = (int)((accumPm / 6.0 * factor) + 0.5);
+  mtn2 = (int)((accumNm / 6.0 * factor) + 0.5);
+
+  const float c1 = float(std::max(norm1, norm2)) / float(std::max(std::min(norm1, norm2), 1));
+  const float c2 = float(std::max(mtn1, mtn2)) / float(std::max(std::min(mtn1, mtn2), 1));
+  const float mr = float(std::max(mtn1, mtn2)) / float(std::max(std::max(norm1, norm2), 1));
+
+  // TODO:  improve this decision about whether to use the mtn metrics or
+  //        the normal metrics.  mtn metrics give better recognition of
+  //        small areas ("mouths")... the hard part is telling when they
+  //        are reliable enough to use.
+  bool useMotion = false;
+  for (int i = firstRung; i < kMtnLadderSize && !useMotion; ++i)
+  {
+    const MtnRung &r = kMtnLadder[i];
+    useMotion = (mtn1 >= r.minimum || mtn2 >= r.minimum) &&
+      (mtn1 * r.num < mtn2 * r.den || mtn2 * r.num < mtn1 * r.den);
+  }
+  if (!useMotion)
+    useMotion = (mtn1 >= 4000 || mtn2 >= 4000) && c2 > c1;
+  if (!useMotion)
+    useMotion = mr > 0.005 && std::max(mtn1, mtn2) > 150 &&
+      (mtn1 * 2 < mtn2 * 1 || mtn2 * 2 < mtn1 * 1);
+
+  if (useMotion)
+    return mtn1 > mtn2 ? match2 : match1;
+  return norm1 > norm2 ? match2 : match1;
+}
+
+// A match code names one field of one frame:
+//   0 (p) prev, 1 (c) current, 2 (n) next  -- the field with the same parity as `field`
+//   3 (b) prev, 4 (u) next                 -- the opposite parity
+// Both match1 and match2 use this same mapping, so the three compareFields variants all share it.
+template<typename pixel_t>
+static void selectMatchField(int match, int field,
+  const pixel_t *prvp, const pixel_t *srcp, const pixel_t *nxtp,
+  ptrdiff_t prv_pitch, ptrdiff_t src_pitch, ptrdiff_t nxt_pitch,
+  const pixel_t *&fieldp, ptrdiff_t &field_pitch)
+{
+  const pixel_t *base;
+  ptrdiff_t pitch;
+  switch (match)
+  {
+  case 0:  base = prvp; pitch = prv_pitch; break;
+  case 1:  base = srcp; pitch = src_pitch; break;
+  case 2:  base = nxtp; pitch = nxt_pitch; break;
+  case 3:  base = prvp; pitch = prv_pitch; break;
+  default: base = nxtp; pitch = nxt_pitch; break; // match == 4; callers only pass 0..4
+  }
+  const int row = match < 3 ? (field == 1 ? 1 : 2) : (field == 1 ? 2 : 1);
+  fieldp = base + row * pitch;
+  field_pitch = pitch << 1;
+}
+
+// match1 additionally decides which parity the woven frame and the diff map start on.
+static inline int curfRow(int match1, int field) { return match1 < 3 ? 3 - field : 2 + field; }
+static inline int mapRow(int match1, int field)
+{
+  return match1 < 3 ? (field == 1 ? 1 : 2) : (field == 1 ? 2 : 1);
+}
 
 template<typename pixel_t>
 int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
@@ -886,65 +1006,12 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
     if (y0a >= 2) y0a = y0a - 2; // v18: real limit, since y goes only till Height-2
     if (y1a <= Height - 2) y1a = y1a + 2; // v18: real limit, since y goes only from 2
 
-    if (match1 < 3)
-    {
-      curf = srcp + ((3 - field)*src_pitch);
-      mapp = mapp + ((field == 1 ? 1 : 2)*map_pitch);
-    }
-    if (match1 == 0)
-    {
-      prvf_pitch = prv_pitch << 1;
-      prvpf = prvp + ((field == 1 ? 1 : 2)*prv_pitch);
-    }
-    else if (match1 == 1)
-    {
-      prvf_pitch = src_pitch << 1;
-      prvpf = srcp + ((field == 1 ? 1 : 2)*src_pitch);
-    }
-    else if (match1 == 2)
-    {
-      prvf_pitch = nxt_pitch << 1;
-      prvpf = nxtp + ((field == 1 ? 1 : 2)*nxt_pitch);
-    }
-    else if (match1 == 3)
-    {
-      curf = srcp + ((2 + field)*src_pitch);
-      prvf_pitch = prv_pitch << 1;
-      prvpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
-      mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
-    }
-    else // match1 == 4; the callers only ever pass 0..4
-    {
-      curf = srcp + ((2 + field)*src_pitch);
-      prvf_pitch = nxt_pitch << 1;
-      prvpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
-      mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
-    }
-    if (match2 == 0)
-    {
-      nxtf_pitch = prv_pitch << 1;
-      nxtpf = prvp + ((field == 1 ? 1 : 2)*prv_pitch);
-    }
-    else if (match2 == 1)
-    {
-      nxtf_pitch = src_pitch << 1;
-      nxtpf = srcp + ((field == 1 ? 1 : 2)*src_pitch);
-    }
-    else if (match2 == 2)
-    {
-      nxtf_pitch = nxt_pitch << 1;
-      nxtpf = nxtp + ((field == 1 ? 1 : 2)*nxt_pitch);
-    }
-    else if (match2 == 3)
-    {
-      nxtf_pitch = prv_pitch << 1;
-      nxtpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
-    }
-    else // match2 == 4; the callers only ever pass 0..4
-    {
-      nxtf_pitch = nxt_pitch << 1;
-      nxtpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
-    }
+    curf = srcp + curfRow(match1, field) * src_pitch;
+    mapp = mapp + mapRow(match1, field) * map_pitch;
+    selectMatchField(match1, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
+      prvpf, prvf_pitch);
+    selectMatchField(match2, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
+      nxtpf, nxtf_pitch);
 
     const pixel_t* prvnf = prvpf + prvf_pitch;
     const pixel_t* curpf = curf - curf_pitch;
@@ -1016,39 +1083,8 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
 
   }
 
-  // High bit depth: I chose to scale back to 8 bit range.
-  // Or else we should treat them as int64 and act upon them outside
-  const double factor = 1.0 / (1 << (bits_per_pixel - 8));
-
-  norm1 = (int)((accumPc / 6.0 * factor) + 0.5);
-  norm2 = (int)((accumNc / 6.0 * factor) + 0.5);
-  mtn1 = (int)((accumPm / 6.0 * factor) + 0.5);
-  mtn2 = (int)((accumNm / 6.0 * factor) + 0.5);
-  // TODO:  improve this decision about whether to use the mtn metrics or
-  //        the normal metrics.  mtn metrics give better recognition of
-  //        small areas ("mouths")... the hard part is telling when they
-  //        are reliable enough to use.
-  float c1 = float(std::max(norm1, norm2)) / float(std::max(std::min(norm1, norm2), 1));
-  float c2 = float(std::max(mtn1, mtn2)) / float(std::max(std::min(mtn1, mtn2), 1));
-  float mr = float(std::max(mtn1, mtn2)) / float(std::max(std::max(norm1, norm2), 1));
-  if (((mtn1 >= 500 || mtn2 >= 500) && (mtn1 * 2 < mtn2 * 1 || mtn2 * 2 < mtn1 * 1)) ||
-    ((mtn1 >= 1000 || mtn2 >= 1000) && (mtn1 * 3 < mtn2 * 2 || mtn2 * 3 < mtn1 * 2)) ||
-    ((mtn1 >= 2000 || mtn2 >= 2000) && (mtn1 * 5 < mtn2 * 4 || mtn2 * 5 < mtn1 * 4)) ||
-    ((mtn1 >= 4000 || mtn2 >= 4000) && c2 > c1))
-  {
-    if (mtn1 > mtn2) ret = match2;
-    else ret = match1;
-  }
-  else if (mr > 0.005 && std::max(mtn1, mtn2) > 150 && (mtn1 * 2 < mtn2 * 1 || mtn2 * 2 < mtn1 * 1))
-  {
-    if (mtn1 > mtn2) ret = match2;
-    else ret = match1;
-  }
-  else
-  {
-    if (norm1 > norm2) ret = match2;
-    else ret = match1;
-  }
+  ret = decideMatch(match1, match2, accumPc, accumNc, accumPm, accumNm, 2,
+    bits_per_pixel, norm1, norm2, mtn1, mtn2);
 //  if (debug)
 //  {
 //    sprintf(buf, "TFM:  frame %d  - comparing %c to %c\n", n, MTC(match1), MTC(match2));
@@ -1141,65 +1177,12 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
     if (y0a >= 2) y0a = y0a - 2; // v18: real limit, since y goes only till Height-2
     if (y1a <= Height - 2) y1a = y1a + 2; // v18: real limit, since y goes only from 2
 
-    if (match1 < 3)
-    {
-      curf = srcp + ((3 - field)*src_pitch);
-      mapp = mapp + ((field == 1 ? 1 : 2)*map_pitch);
-    }
-    if (match1 == 0)
-    {
-      prvf_pitch = prv_pitch << 1;
-      prvpf = prvp + ((field == 1 ? 1 : 2)*prv_pitch);
-    }
-    else if (match1 == 1)
-    {
-      prvf_pitch = src_pitch << 1;
-      prvpf = srcp + ((field == 1 ? 1 : 2)*src_pitch);
-    }
-    else if (match1 == 2)
-    {
-      prvf_pitch = nxt_pitch << 1;
-      prvpf = nxtp + ((field == 1 ? 1 : 2)*nxt_pitch);
-    }
-    else if (match1 == 3)
-    {
-      curf = srcp + ((2 + field)*src_pitch);
-      prvf_pitch = prv_pitch << 1;
-      prvpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
-      mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
-    }
-    else // match1 == 4; the callers only ever pass 0..4
-    {
-      curf = srcp + ((2 + field)*src_pitch);
-      prvf_pitch = nxt_pitch << 1;
-      prvpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
-      mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
-    }
-    if (match2 == 0)
-    {
-      nxtf_pitch = prv_pitch << 1;
-      nxtpf = prvp + ((field == 1 ? 1 : 2)*prv_pitch);
-    }
-    else if (match2 == 1)
-    {
-      nxtf_pitch = src_pitch << 1;
-      nxtpf = srcp + ((field == 1 ? 1 : 2)*src_pitch);
-    }
-    else if (match2 == 2)
-    {
-      nxtf_pitch = nxt_pitch << 1;
-      nxtpf = nxtp + ((field == 1 ? 1 : 2)*nxt_pitch);
-    }
-    else if (match2 == 3)
-    {
-      nxtf_pitch = prv_pitch << 1;
-      nxtpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
-    }
-    else // match2 == 4; the callers only ever pass 0..4
-    {
-      nxtf_pitch = nxt_pitch << 1;
-      nxtpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
-    }
+    curf = srcp + curfRow(match1, field) * src_pitch;
+    mapp = mapp + mapRow(match1, field) * map_pitch;
+    selectMatchField(match1, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
+      prvpf, prvf_pitch);
+    selectMatchField(match2, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
+      nxtpf, nxtf_pitch);
 
     const pixel_t* prvnf = prvpf + prvf_pitch;
     const pixel_t* curpf = curf - curf_pitch;
@@ -1291,37 +1274,8 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
     accumNm = accumNml;
   }
 
-  // High bit depth: I chose to scale back to 8 bit range.
-  // Or else we should treat them as int64 and act upon them outside
-  const double factor = 1.0 / (1 << (bits_per_pixel - 8));
-
-  norm1 = (int)((accumPc / 6.0 * factor) + 0.5);
-  norm2 = (int)((accumNc / 6.0 * factor) + 0.5);
-  mtn1 = (int)((accumPm / 6.0 * factor) + 0.5);
-  mtn2 = (int)((accumNm / 6.0 * factor) + 0.5);
-  // we are in the 8bit normalized region again, no change from here
-  float c1 = float(std::max(norm1, norm2)) / float(std::max(std::min(norm1, norm2), 1));
-  float c2 = float(std::max(mtn1, mtn2)) / float(std::max(std::min(mtn1, mtn2), 1));
-  float mr = float(std::max(mtn1, mtn2)) / float(std::max(std::max(norm1, norm2), 1));
-  if (((mtn1 >= 375 || mtn2 >= 375) && (mtn1 * 3 < mtn2 * 1 || mtn2 * 3 < mtn1 * 1)) ||
-    ((mtn1 >= 500 || mtn2 >= 500) && (mtn1 * 2 < mtn2 * 1 || mtn2 * 2 < mtn1 * 1)) ||
-    ((mtn1 >= 1000 || mtn2 >= 1000) && (mtn1 * 3 < mtn2 * 2 || mtn2 * 3 < mtn1 * 2)) ||
-    ((mtn1 >= 2000 || mtn2 >= 2000) && (mtn1 * 5 < mtn2 * 4 || mtn2 * 5 < mtn1 * 4)) ||
-    ((mtn1 >= 4000 || mtn2 >= 4000) && c2 > c1))
-  {
-    if (mtn1 > mtn2) ret = match2;
-    else ret = match1;
-  }
-  else if (mr > 0.005 && std::max(mtn1, mtn2) > 150 && (mtn1 * 2 < mtn2 * 1 || mtn2 * 2 < mtn1 * 1))
-  {
-    if (mtn1 > mtn2) ret = match2;
-    else ret = match1;
-  }
-  else
-  {
-    if (norm1 > norm2) ret = match2;
-    else ret = match1;
-  }
+  ret = decideMatch(match1, match2, accumPc, accumNc, accumPm, accumNm, 1,
+    bits_per_pixel, norm1, norm2, mtn1, mtn2);
 //  if (debug)
 //  {
 //    sprintf(buf, "TFM:  frame %d  - comparing %c to %c  (SLOW 1)\n", n, MTC(match1), MTC(match2));
@@ -1398,65 +1352,12 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
     if (y0a >= 2) y0a = y0a - 2; // v18: real limit, since y goes only till Height-2
     if (y1a <= Height - 2) y1a = y1a + 2; // v18: real limit, since y goes only from 2
 
-    if (match1 < 3)
-    {
-      curf = srcp + ((3 - field)*src_pitch);
-      mapp = mapp + ((field == 1 ? 1 : 2)*map_pitch);
-    }
-    if (match1 == 0)
-    {
-      prvf_pitch = prv_pitch << 1;
-      prvpf = prvp + ((field == 1 ? 1 : 2)*prv_pitch);
-    }
-    else if (match1 == 1)
-    {
-      prvf_pitch = src_pitch << 1;
-      prvpf = srcp + ((field == 1 ? 1 : 2)*src_pitch);
-    }
-    else if (match1 == 2)
-    {
-      prvf_pitch = nxt_pitch << 1;
-      prvpf = nxtp + ((field == 1 ? 1 : 2)*nxt_pitch);
-    }
-    else if (match1 == 3)
-    {
-      curf = srcp + ((2 + field)*src_pitch);
-      prvf_pitch = prv_pitch << 1;
-      prvpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
-      mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
-    }
-    else // match1 == 4; the callers only ever pass 0..4
-    {
-      curf = srcp + ((2 + field)*src_pitch);
-      prvf_pitch = nxt_pitch << 1;
-      prvpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
-      mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
-    }
-    if (match2 == 0)
-    {
-      nxtf_pitch = prv_pitch << 1;
-      nxtpf = prvp + ((field == 1 ? 1 : 2)*prv_pitch);
-    }
-    else if (match2 == 1)
-    {
-      nxtf_pitch = src_pitch << 1;
-      nxtpf = srcp + ((field == 1 ? 1 : 2)*src_pitch);
-    }
-    else if (match2 == 2)
-    {
-      nxtf_pitch = nxt_pitch << 1;
-      nxtpf = nxtp + ((field == 1 ? 1 : 2)*nxt_pitch);
-    }
-    else if (match2 == 3)
-    {
-      nxtf_pitch = prv_pitch << 1;
-      nxtpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
-    }
-    else // match2 == 4; the callers only ever pass 0..4
-    {
-      nxtf_pitch = nxt_pitch << 1;
-      nxtpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
-    }
+    curf = srcp + curfRow(match1, field) * src_pitch;
+    mapp = mapp + mapRow(match1, field) * map_pitch;
+    selectMatchField(match1, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
+      prvpf, prvf_pitch);
+    selectMatchField(match2, field, prvp, srcp, nxtp, prv_pitch, src_pitch, nxt_pitch,
+      nxtpf, nxtf_pitch);
 
     const pixel_t* prvppf = prvpf - prvf_pitch;
     const pixel_t* prvnf = prvpf + prvf_pitch;
@@ -1688,38 +1589,8 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
     accumNm = accumNml;
   }
 
-  // High bit depth: I chose to scale back to 8 bit range.
-  // Or else we should treat them as int64 and act upon them outside
-  const double factor = 1.0 / (1 << (bits_per_pixel - 8));
-
-  norm1 = (int)((accumPc / 6.0 * factor) + 0.5);
-  norm2 = (int)((accumNc / 6.0 * factor) + 0.5);
-  mtn1 = (int)((accumPm / 6.0 * factor) + 0.5);
-  mtn2 = (int)((accumNm / 6.0 * factor) + 0.5);
-  // we are in the 8bit normalized region again, no change from here
-  float c1 = float(std::max(norm1, norm2)) / float(std::max(std::min(norm1, norm2), 1));
-  float c2 = float(std::max(mtn1, mtn2)) / float(std::max(std::min(mtn1, mtn2), 1));
-  float mr = float(std::max(mtn1, mtn2)) / float(std::max(std::max(norm1, norm2), 1));
-  if (((mtn1 >= 250 || mtn2 >= 250) && (mtn1 * 4 < mtn2 * 1 || mtn2 * 4 < mtn1 * 1)) ||
-    ((mtn1 >= 375 || mtn2 >= 375) && (mtn1 * 3 < mtn2 * 1 || mtn2 * 3 < mtn1 * 1)) ||
-    ((mtn1 >= 500 || mtn2 >= 500) && (mtn1 * 2 < mtn2 * 1 || mtn2 * 2 < mtn1 * 1)) ||
-    ((mtn1 >= 1000 || mtn2 >= 1000) && (mtn1 * 3 < mtn2 * 2 || mtn2 * 3 < mtn1 * 2)) ||
-    ((mtn1 >= 2000 || mtn2 >= 2000) && (mtn1 * 5 < mtn2 * 4 || mtn2 * 5 < mtn1 * 4)) ||
-    ((mtn1 >= 4000 || mtn2 >= 4000) && c2 > c1))
-  {
-    if (mtn1 > mtn2) ret = match2;
-    else ret = match1;
-  }
-  else if (mr > 0.005 && std::max(mtn1, mtn2) > 150 && (mtn1 * 2 < mtn2 * 1 || mtn2 * 2 < mtn1 * 1))
-  {
-    if (mtn1 > mtn2) ret = match2;
-    else ret = match1;
-  }
-  else
-  {
-    if (norm1 > norm2) ret = match2;
-    else ret = match1;
-  }
+  ret = decideMatch(match1, match2, accumPc, accumNc, accumPm, accumNm, 0,
+    bits_per_pixel, norm1, norm2, mtn1, mtn2);
 //  if (debug)
 //  {
 //    sprintf(buf, "TFM:  frame %d  - comparing %c to %c  (SLOW 2)\n", n, MTC(match1), MTC(match2));
@@ -1843,6 +1714,17 @@ bool TFM::checkSceneChange_core(const VSFrame *prv, const VSFrame *src, const VS
   return sclast.sc;
 }
 
+// Copy one field of `from` -- every other row starting at `parity` -- into the same rows of dst.
+void TFM::weaveField(VSFrame *dst, const VSFrame *from, int plane, int parity) const
+{
+  const ptrdiff_t dst_pitch = vsapi->getStride(dst, plane);
+  const ptrdiff_t src_pitch = vsapi->getStride(from, plane);
+  vsh::bitblt(vsapi->getWritePtr(dst, plane) + parity * dst_pitch, dst_pitch << 1,
+    vsapi->getReadPtr(from, plane) + parity * src_pitch, src_pitch << 1,
+    vsapi->getFrameWidth(from, plane) * vi->format.bytesPerSample,
+    vsapi->getFrameHeight(from, plane) >> 1);
+}
+
 void TFM::createWeaveFrame(VSFrame *dst, const VSFrame *prv, const VSFrame *src,
   const VSFrame *nxt, int match, int &cfrm) const
 {
@@ -1853,48 +1735,33 @@ void TFM::createWeaveFrame(VSFrame *dst, const VSFrame *prv, const VSFrame *src,
   for (int b = 0; b < np; ++b)
   {
     const int plane = b;
-    if (match == 0)
+    // Apart from 'c', every match weaves one field of the current frame together with the
+    // opposite field of a neighbour. p/n take the current frame's !field, b/u take its field.
+    switch (match)
     {
-      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
-        vsapi->getReadPtr(src, plane) + (1 - field)*vsapi->getStride(src, plane), vsapi->getStride(src, plane) << 1,
-        vsapi->getFrameWidth(src, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
-      vsh::bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
-        vsapi->getReadPtr(prv, plane) + field*vsapi->getStride(prv, plane), vsapi->getStride(prv, plane) << 1,
-        vsapi->getFrameWidth(prv, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(prv, plane) >> 1);
+    case 1: // c: the current frame untouched
+      vsh::bitblt(vsapi->getWritePtr(dst, plane), vsapi->getStride(dst, plane),
+        vsapi->getReadPtr(src, plane), vsapi->getStride(src, plane),
+        vsapi->getFrameWidth(src, plane) * vi->format.bytesPerSample,
+        vsapi->getFrameHeight(src, plane));
+      break;
+    case 0: // p: current + previous
+      weaveField(dst, src, plane, 1 - field);
+      weaveField(dst, prv, plane, field);
+      break;
+    case 2: // n: current + next
+      weaveField(dst, src, plane, 1 - field);
+      weaveField(dst, nxt, plane, field);
+      break;
+    case 3: // b: current + previous, opposite parity to p
+      weaveField(dst, src, plane, field);
+      weaveField(dst, prv, plane, 1 - field);
+      break;
+    default: // 4, u: current + next, opposite parity to n
+      weaveField(dst, src, plane, field);
+      weaveField(dst, nxt, plane, 1 - field);
+      break;
     }
-    else if (match == 1)
-    {
-      vsh::bitblt(vsapi->getWritePtr(dst, plane), vsapi->getStride(dst, plane), vsapi->getReadPtr(src, plane),
-        vsapi->getStride(src, plane), vsapi->getFrameWidth(src, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(src, plane));
-    }
-    else if (match == 2)
-    {
-      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
-        vsapi->getReadPtr(src, plane) + (1 - field)*vsapi->getStride(src, plane), vsapi->getStride(src, plane) << 1,
-        vsapi->getFrameWidth(src, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
-      vsh::bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
-        vsapi->getReadPtr(nxt, plane) + field*vsapi->getStride(nxt, plane), vsapi->getStride(nxt, plane) << 1,
-        vsapi->getFrameWidth(nxt, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(nxt, plane) >> 1);
-    }
-    else if (match == 3)
-    {
-      vsh::bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
-        vsapi->getReadPtr(src, plane) + field*vsapi->getStride(src, plane), vsapi->getStride(src, plane) << 1,
-        vsapi->getFrameWidth(src, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
-      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
-        vsapi->getReadPtr(prv, plane) + (1 - field)*vsapi->getStride(prv, plane), vsapi->getStride(prv, plane) << 1,
-        vsapi->getFrameWidth(prv, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(prv, plane) >> 1);
-    }
-    else if (match == 4)
-    {
-      vsh::bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
-        vsapi->getReadPtr(src, plane) + field*vsapi->getStride(src, plane), vsapi->getStride(src, plane) << 1,
-        vsapi->getFrameWidth(src, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
-      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
-        vsapi->getReadPtr(nxt, plane) + (1 - field)*vsapi->getStride(nxt, plane), vsapi->getStride(nxt, plane) << 1,
-        vsapi->getFrameWidth(nxt, plane) * vi->format.bytesPerSample, vsapi->getFrameHeight(nxt, plane) >> 1);
-    }
-//    else throw TIVTCError("TFM:  an unknown error occurred (no such match!)");
   }
   cfrm = match;
 }
@@ -2224,7 +2091,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
 //      }
       while (fgets(linein, 1024, f.get()) != nullptr)
       {
-        if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == ';' || linein[0] == '#')
+        if (isBlankOrCommentLine(linein))
           continue;
         ++firstLine;
         linep = linein;
@@ -2274,8 +2141,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
           z = -1; // a failed parse must fail the range check below, not reuse a previous line's value
           sscanf(linein, "%d", &z);
           linep = linein;
-          while (*linep != 'p' && *linep != 'c' && *linep != 'n' && *linep != 'u' &&
-            *linep != 'b' && *linep != 'l' && *linep != 'h' && *linep != 0) linep++;
+          linep = skipToMatchChar(linep);
           if (*linep != 0)
           {
             if (z<0 || z>nfrms)
@@ -2289,15 +2155,8 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
               qt = -1;
               d2vmarked = micmarked = false;
               linep++;
-              q = *linep;
-              if (q == 112) q = 0;
-              else if (q == 99) q = 1;
-              else if (q == 110) q = 2;
-              else if (q == 98) q = 3;
-              else if (q == 117) q = 4;
-              else if (q == 108) q = 5;
-              else if (q == 104) q = 6;
-              else
+              q = decodeMatchChar(*linep);
+              if (q < 0)
               {
                 throw TIVTCError("TFM:  input file error (invalid match specifier)!");
               }
@@ -2305,22 +2164,22 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
               linep++;
               if (*linep != 0)
               {
-                qt = *linep;
-                if (qt == 45) qt = 0;
-                else if (qt == 43) qt = COMBED;
-                else if (qt == '1') { d2vmarked = true; qt = -1; }
-                else if (qt == '[') { micmarked = true; qt = -1; }
-                else
+                qt = decodeCombedChar(*linep);
+                if (qt < 0)
                 {
-                  throw TIVTCError("TFM:  input file error (invalid specifier)!");
+                  // not a combed specifier; the only other things that may follow are the
+                  // d2v and mic annotations, both of which leave qt as "nothing recorded"
+                  if (*linep == '1') d2vmarked = true;
+                  else if (*linep == '[') micmarked = true;
+                  else
+                  {
+                    throw TIVTCError("TFM:  input file error (invalid specifier)!");
+                  }
                 }
               }
               if (fieldt != fieldO)
               {
-                if (q == 0) q = 3;
-                else if (q == 2) q = 4;
-                else if (q == 3) q = 0;
-                else if (q == 4) q = 2;
+                q = flipMatchFieldOrder(q);
               }
               if (!d2vmarked && !micmarked && qt != -1)
               {
@@ -2366,7 +2225,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
       countOvrS = countOvrM = 0;
       while (fgets(linein, 1024, f.get()) != nullptr)
       {
-        if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == ';' || linein[0] == '#')
+        if (isBlankOrCommentLine(linein))
           continue;
         // Classify by the specifier (first non-space char after the leading frame number / range):
         // f/m/o/P/i are per-frame settings lines (written into setArray by pass 2); everything else
@@ -2435,7 +2294,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
 //        }
         while (fgets(linein, 1024, f.get()) != nullptr)
         {
-          if (linein[0] == 0 || linein[0] == '\n' || linein[0] == '\r' || linein[0] == ';' || linein[0] == '#')
+          if (isBlankOrCommentLine(linein))
             continue;
           ++firstLine;
           linep = linein;
@@ -2477,24 +2336,14 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
               if (*linep != 0)
               {
                 linep++;
-                q = *linep;
-                if (q == 112) q = 0;
-                else if (q == 99) q = 1;
-                else if (q == 110) q = 2;
-                else if (q == 98) q = 3;
-                else if (q == 117) q = 4;
-                else if (q == 108) q = 5;
-                else if (q == 104) q = 6;
-                else
+                q = decodeMatchChar(*linep);
+                if (q < 0)
                 {
                   throw TIVTCError("TFM:  ovr file error (invalid match specifier)!");
                 }
                 if (fieldt != fieldO)
                 {
-                  if (q == 0) q = 3;
-                  else if (q == 2) q = 4;
-                  else if (q == 3) q = 0;
-                  else if (q == 4) q = 2;
+                  q = flipMatchFieldOrder(q);
                 }
                 ovrArray[z] |= 0x07;
                 ovrArray[z] &= (q | 0xF8);
@@ -2514,10 +2363,8 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
               if (*linep != 0)
               {
                 linep++;
-                q = *linep;
-                if (q == 45) q = 0;
-                else if (q == 43) q = COMBED;
-                else
+                q = decodeCombedChar(*linep);
+                if (q < 0)
                 {
                   throw TIVTCError("TFM:  ovr file error (invalid symbol)!");
                 }
@@ -2552,26 +2399,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
                   linep++;
                   if (*linep == 0) continue;
                   if (sscanf(linep, "%d", &b) != 1) continue;
-                  if (q == 102 && b != 0 && b != 1 && b != -1)
-                  {
-                    throw TIVTCError("TFM:  ovr input error (bad field value)!");
-                  }
-                  else if (q == 111 && b != 0 && b != 1 && b != -1)
-                  {
-                    throw TIVTCError("TFM:  ovr input error (bad order value)!");
-                  }
-                  else if (q == 109 && (b < 0 || b > 7))
-                  {
-                    throw TIVTCError("TFM:  ovr input error (bad mode value)!");
-                  }
-                  else if (q == 80 && (b < 0 || b > 7))
-                  {
-                    throw TIVTCError("TFM:  ovr input error (bad PP value)!");
-                  }
-                  setArray[i] = q; ++i;
-                  setArray[i] = z; ++i;
-                  setArray[i] = z; ++i;
-                  setArray[i] = b; ++i;
+                  appendSetting(q, z, z, b, i);
                 }
               }
             }
@@ -2600,24 +2428,14 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
                   count = 0;
                   while ((*linep == 'p' || *linep == 'c' || *linep == 'n' || *linep == 'b' || *linep == 'u' || *linep == 'l' || *linep == 'h') && (z + count <= w))
                   {
-                    q = *linep;
-                    if (q == 112) q = 0;
-                    else if (q == 99) q = 1;
-                    else if (q == 110) q = 2;
-                    else if (q == 98) q = 3;
-                    else if (q == 117) q = 4;
-                    else if (q == 108) q = 5;
-                    else if (q == 104) q = 6;
-                    else
+                    q = decodeMatchChar(*linep);
+                    if (q < 0)
                     {
                       throw TIVTCError("TFM:  input file error (invalid match specifier)!");
                     }
                     if (fieldt != fieldO)
                     {
-                      if (q == 0) q = 3;
-                      else if (q == 2) q = 4;
-                      else if (q == 3) q = 0;
-                      else if (q == 4) q = 2;
+                      q = flipMatchFieldOrder(q);
                     }
                     ovrArray[z + count] |= 0x07;
                     ovrArray[z + count] &= (q | 0xF8);
@@ -2634,24 +2452,14 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
                 }
                 else
                 {
-                  q = *linep;
-                  if (q == 112) q = 0;
-                  else if (q == 99) q = 1;
-                  else if (q == 110) q = 2;
-                  else if (q == 98) q = 3;
-                  else if (q == 117) q = 4;
-                  else if (q == 108) q = 5;
-                  else if (q == 104) q = 6;
-                  else
+                  q = decodeMatchChar(*linep);
+                  if (q < 0)
                   {
                     throw TIVTCError("TFM:  input file error (invalid match specifier)!");
                   }
                   if (fieldt != fieldO)
                   {
-                    if (q == 0) q = 3;
-                    else if (q == 2) q = 4;
-                    else if (q == 3) q = 0;
-                    else if (q == 4) q = 2;
+                    q = flipMatchFieldOrder(q);
                   }
                   while (z <= w)
                   {
@@ -2682,10 +2490,8 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
                   count = 0;
                   while ((*linep == '-' || *linep == '+') && (z + count <= w))
                   {
-                    q = *linep;
-                    if (q == 45) q = 0;
-                    else if (q == 43) q = COMBED;
-                    else
+                    q = decodeCombedChar(*linep);
+                    if (q < 0)
                     {
                       throw TIVTCError("TFM:  input file error (invalid symbol)!");
                     }
@@ -2717,10 +2523,8 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
                 }
                 else
                 {
-                  q = *linep;
-                  if (q == 45) q = 0;
-                  else if (q == 43) q = COMBED;
-                  else
+                  q = decodeCombedChar(*linep);
+                  if (q < 0)
                   {
                     throw TIVTCError("TFM:  input file error (invalid symbol)!");
                   }
@@ -2761,26 +2565,7 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
                   linep++;
                   if (*linep == 0) continue;
                   if (sscanf(linep, "%d", &b) != 1) continue;
-                  if (q == 102 && b != 0 && b != 1 && b != -1)
-                  {
-                    throw TIVTCError("TFM:  ovr input error (bad field value)!");
-                  }
-                  else if (q == 111 && b != 0 && b != 1 && b != -1)
-                  {
-                    throw TIVTCError("TFM:  ovr input error (bad order value)!");
-                  }
-                  else if (q == 109 && (b < 0 || b > 7))
-                  {
-                    throw TIVTCError("TFM:  ovr input error (bad mode value)!");
-                  }
-                  else if (q == 80 && (b < 0 || b > 7))
-                  {
-                    throw TIVTCError("TFM:  ovr input error (bad PP value)!");
-                  }
-                  setArray[i] = q; ++i;
-                  setArray[i] = z; ++i;
-                  setArray[i] = w; ++i;
-                  setArray[i] = b; ++i;
+                  appendSetting(q, z, w, b, i);
                 }
               }
             }

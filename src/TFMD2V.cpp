@@ -122,6 +122,30 @@ void TFM::parseD2V()
     "          in the same directory as the original d2v file.");
 }
 
+// A d2v data line begins with a fixed run of space separated header fields -- how many depends on
+// the d2v version -- followed by the per-frame flag bytes. Return a pointer to the first flag byte.
+static char *skipD2VHeaderFields(char *p, int D2Vformat)
+{
+  while (*p && *p++ != ' ');
+  while (*p && *p++ != ' ');
+  if (D2Vformat > 9) while (*p && *p++ != ' ');
+  while (*p && *p++ != ' ');
+  if (D2Vformat > 0)
+  {
+    while (*p && *p++ != ' ');
+    while (*p && *p++ != ' ');
+    if (D2Vformat > 18)
+      while (*p && *p++ != ' ');
+  }
+  return p;
+}
+
+// The flag bytes are printed as hex, but the original range check is this loose: '0' through 'z'.
+static inline bool isD2VFlagChar(int c)
+{
+  return c > 47 && c < 123;
+}
+
 int TFM::fillTrimArray(int frames)
 {
   trimArray.resize(frames, 1);
@@ -342,19 +366,8 @@ pass2_start:
   if (fgets(line, 1024, ind2v.get()) == nullptr) return 2;
   do
   {
-    p = line;
-    while (*p && *p++ != ' ');
-    while (*p && *p++ != ' ');
-    if (D2Vformat > 9) while (*p && *p++ != ' ');
-    while (*p && *p++ != ' ');
-    if (D2Vformat > 0)
-    {
-      while (*p && *p++ != ' ');
-      while (*p && *p++ != ' ');
-      if (D2Vformat > 18)
-        while (*p && *p++ != ' ');
-    }
-    while (*p > 47 && *p < 123)
+    p = skipD2VHeaderFields(line, D2Vformat);
+    while (isD2VFlagChar(*p))
     {
       if (pass == 1) ++num;
       else
@@ -371,7 +384,7 @@ pass2_start:
       while (*p && *p != ' ' && *p != '\n') p++;
       p++;
     }
-  } while ((fgets(line, 1024, ind2v.get()) != nullptr) && line[0] > 47 && line[0] < 123);
+  } while ((fgets(line, 1024, ind2v.get()) != nullptr) && isD2VFlagChar(line[0]));
   if (pass == 1) { pass++; goto pass2_start; }
   d2vtype = D2Vformat;
   frames = 0;
@@ -429,19 +442,8 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
   bool have_line;
   do
   {
-    p = line;
-    while (*p && *p++ != ' ');
-    while (*p && *p++ != ' ');
-    if (D2Vformat > 9) while (*p && *p++ != ' ');
-    while (*p && *p++ != ' ');
-    if (D2Vformat > 0)
-    {
-      while (*p && *p++ != ' ');
-      while (*p && *p++ != ' ');
-      if (D2Vformat > 18)
-        while (*p && *p++ != ' ');
-    }
-    while (*p > 47 && *p < 123)
+    p = skipD2VHeaderFields(line, D2Vformat);
+    while (isD2VFlagChar(*p))
     {
       if (D2Vformat < 10)
       {
@@ -468,7 +470,7 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
     }
     fputs(line, outd2v.get());
     have_line = (fgets(line, 1024, ind2v.get()) != nullptr);
-  } while (have_line && line[0] > 47 && line[0] < 123);
+  } while (have_line && isD2VFlagChar(line[0]));
   // At EOF "line" still holds the previous iteration's text, which the loop already wrote out;
   // only echo it when fgets actually produced a new line.
   if (have_line) fputs(line, outd2v.get());

@@ -178,6 +178,36 @@ void calcSSD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
 
 
 
+// The per-pixel metric: absolute difference for SAD, squared difference for SSD, scaled back to
+// the 8 bit range for high bit depth material so the thresholds stay comparable across depths.
+template<typename pixel_t, bool SAD, typename safeint_t>
+static inline safeint_t pixelDiff(pixel_t a, pixel_t b, int shift_count)
+{
+  safeint_t difft;
+  if constexpr (SAD)
+    difft = abs(a - b);
+  else
+  {
+    difft = a - b;
+    difft *= difft;
+  }
+  if constexpr (sizeof(pixel_t) == 2) difft >>= shift_count; // back to 8 bit range
+  return difft;
+}
+
+// Every pixel belongs to four overlapping blocks (the block grid is stepped by half a block in
+// both directions), so a column's total lands in four slots of the diff array.
+static inline void addToBlocks(uint64_t *diff, int temp1, int temp2, int x, int xhalf, int xshift,
+  int64_t diffs)
+{
+  const int box1 = (x >> xshift) << 2;
+  const int box2 = ((x + xhalf) >> xshift) << 2;
+  diff[temp1 + box1 + 0] += diffs;
+  diff[temp1 + box2 + 1] += diffs;
+  diff[temp2 + box1 + 2] += diffs;
+  diff[temp2 + box2 + 3] += diffs;
+}
+
 // true: SAD, false: SSD
 template<typename pixel_t, bool SAD, int inc>
 void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
@@ -193,7 +223,6 @@ void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
 
   safeint_t difft; // int or 64 bits
   int64_t diffs; // per-block SSD sum can exceed 32 bits for large blocks (e.g. ssd=1, 512x512); use 64-bit
-  int box1, box2;
   int yshift, yhalf, xshift, xhalf;
   int heighta, widtha;
   const pixel_t* prvpT, * curpT;
@@ -225,15 +254,7 @@ void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
       {
         for (int v = 0; v < xhalf; v += inc)
         {
-          if constexpr (SAD) {
-            difft = abs(prvpT[x + v] - curpT[x + v]);
-          }
-          else {
-            difft = prvpT[x + v] - curpT[x + v];
-            difft *= difft;
-          }
-          if constexpr (sizeof(pixel_t) == 2) difft >>= shift_count; // back to 8 bit range
-
+          difft = pixelDiff<pixel_t, SAD, safeint_t>(prvpT[x + v], curpT[x + v], shift_count);
           if (difft > nt) diffs += static_cast<int>(difft);
         }
         prvpT += prv_pitch;
@@ -241,12 +262,7 @@ void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
       }
       if (diffs > nt)
       {
-        box1 = (x >> xshift) << 2;
-        box2 = ((x + xhalf) >> xshift) << 2;
-        diff[temp1 + box1 + 0] += diffs;
-        diff[temp1 + box2 + 1] += diffs;
-        diff[temp2 + box1 + 2] += diffs;
-        diff[temp2 + box2 + 3] += diffs;
+        addToBlocks(diff, temp1, temp2, x, xhalf, xshift, diffs);
       }
     }
     // rest non - whole block on the right
@@ -256,26 +272,14 @@ void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
       curpT = curp;
       for (diffs = 0, u = 0; u < yhalf; ++u)
       {
-        if constexpr (SAD) {
-          difft = abs(prvpT[x] - curpT[x]);
-        }
-        else {
-          difft = prvpT[x] - curpT[x];
-          difft *= difft;
-        }
-        if constexpr (sizeof(pixel_t) == 2) difft >>= shift_count; // back to 8 bit range
+        difft = pixelDiff<pixel_t, SAD, safeint_t>(prvpT[x], curpT[x], shift_count);
         if (difft > nt) diffs += static_cast<int>(difft);
         prvpT += prv_pitch;
         curpT += cur_pitch;
       }
       if (diffs > nt)
       {
-        box1 = (x >> xshift) << 2;
-        box2 = ((x + xhalf) >> xshift) << 2;
-        diff[temp1 + box1 + 0] += diffs;
-        diff[temp1 + box2 + 1] += diffs;
-        diff[temp2 + box1 + 2] += diffs;
-        diff[temp2 + box2 + 3] += diffs;
+        addToBlocks(diff, temp1, temp2, x, xhalf, xshift, diffs);
       }
     }
     prvp += prv_pitch * yhalf;
@@ -288,22 +292,10 @@ void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
     temp2 = ((y + yhalf) >> yshift) * xblocks4;
     for (int x = 0; x < width; x += inc)
     {
-      if constexpr (SAD) {
-        difft = abs(prvp[x] - curp[x]);
-      }
-      else {
-        difft = prvp[x] - curp[x];
-        difft *= difft;
-      }
-      if constexpr (sizeof(pixel_t) == 2) difft >>= shift_count; // back to 8 bit range
+      difft = pixelDiff<pixel_t, SAD, safeint_t>(prvp[x], curp[x], shift_count);
       if (difft > nt)
       {
-        box1 = (x >> xshift) << 2;
-        box2 = ((x + xhalf) >> xshift) << 2;
-        diff[temp1 + box1 + 0] += difft;
-        diff[temp1 + box2 + 1] += difft;
-        diff[temp2 + box1 + 2] += difft;
-        diff[temp2 + box2 + 3] += difft;
+        addToBlocks(diff, temp1, temp2, x, xhalf, xshift, difft);
       }
     }
     prvp += prv_pitch;

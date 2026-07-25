@@ -97,6 +97,7 @@ public:
   std::vector<int> dect, dect2; // scratch copies of decimate/decimate2
 
   void setFrame(int frameIn);
+  void markLowestForDecimation(int target, const char *which);
   void setDecimateLow(int num);
   void setLowest(bool exludeD);
   void setDups(double thresh);

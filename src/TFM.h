@@ -142,6 +142,11 @@ private:
 
   void fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int mics[5]);
 
+  // Shared epilogue of the three compareFields variants.
+  int decideMatch(int match1, int match2, uint64_t accumPc, uint64_t accumNc,
+    uint64_t accumPm, uint64_t accumNm, int firstRung, int bits_per_pixel,
+    int &norm1, int &norm2, int &mtn1, int &mtn2) const;
+
   int compareFields(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
     int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n);
   template<typename pixel_t>
@@ -157,11 +162,13 @@ private:
   int compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
     int match2, int& norm1, int& norm2, int& mtn1, int& mtn2, int n);
 
+  void weaveField(VSFrame *dst, const VSFrame *from, int plane, int parity) const;
   void createWeaveFrame(VSFrame *dst, const VSFrame *prv, const VSFrame *src,
     const VSFrame *nxt, int match, int &cfrm) const;
   
   bool getMatchOvr(int n, int &match, int &combed, bool &d2vmatch, bool isSC);
   void getSettingOvr(int n);
+  void appendSetting(int specifier, int first, int last, int value, int &i);
   
   bool checkCombed(const VSFrame *src, int n, int match,
     int *blockN, int &xblocksi, int *mics, bool ddebug);

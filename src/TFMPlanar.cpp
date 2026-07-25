@@ -247,6 +247,36 @@ bool TFM::checkCombedPlanar(const VSFrame *src, int n, int match,
   }
 }
 
+// Count fully combed columns (all three rows of the 3 row cmask window set) into the four
+// overlapping blocks each column belongs to, advancing the three row pointers as it goes. Used for
+// the partial rows above and below the whole-block region, where the block-at-a-time path in
+// between does not apply. cmkpp/cmkp/cmkpn are advanced past the rows that were counted.
+static void countCombedRows(const uint8_t *&cmkpp, const uint8_t *&cmkp, const uint8_t *&cmkpn,
+  ptrdiff_t cmk_pitch, int y0, int y1, int Width, int xblocks4, int xshift, int xhalf,
+  int yshift, int yhalf, std::vector<int> &cArray)
+{
+  for (int y = y0; y < y1; ++y)
+  {
+    const int temp1 = (y >> yshift)*xblocks4;
+    const int temp2 = ((y + yhalf) >> yshift)*xblocks4;
+    for (int x = 0; x < Width; ++x)
+    {
+      if (cmkpp[x] == 0xFF && cmkp[x] == 0xFF && cmkpn[x] == 0xFF)
+      {
+        const int box1 = (x >> xshift) << 2;
+        const int box2 = ((x + xhalf) >> xshift) << 2;
+        ++cArray[temp1 + box1 + 0];
+        ++cArray[temp1 + box2 + 1];
+        ++cArray[temp2 + box1 + 2];
+        ++cArray[temp2 + box2 + 3];
+      }
+    }
+    cmkpp += cmk_pitch;
+    cmkp += cmk_pitch;
+    cmkpn += cmk_pitch;
+  }
+}
+
 template<typename pixel_t>
 bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_unused]] int n, int match,
   int* blockN, int& xblocksi, int* mics, [[maybe_unused]] bool ddebug, [[maybe_unused]] int bits_per_pixel)
@@ -268,26 +298,8 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
   int Heighta = (Height >> (yshift - 1)) << (yshift - 1);
   if (Heighta == Height) Heighta = Height - yhalf;
   const int Widtha = (Width >> (xshift - 1)) << (xshift - 1);
-  for (int y = 1; y < yhalf; ++y)
-  {
-    const int temp1 = (y >> yshift)*xblocks4;
-    const int temp2 = ((y + yhalf) >> yshift)*xblocks4;
-    for (int x = 0; x < Width; ++x)
-    {
-      if (cmkpp[x] == 0xFF && cmkp[x] == 0xFF && cmkpn[x] == 0xFF)
-      {
-        const int box1 = (x >> xshift) << 2;
-        const int box2 = ((x + xhalf) >> xshift) << 2;
-        ++cArray[temp1 + box1 + 0];
-        ++cArray[temp1 + box2 + 1];
-        ++cArray[temp2 + box1 + 2];
-        ++cArray[temp2 + box2 + 3];
-      }
-    }
-    cmkpp += cmk_pitch;
-    cmkp += cmk_pitch;
-    cmkpn += cmk_pitch;
-  }
+  countCombedRows(cmkpp, cmkp, cmkpn, cmk_pitch, 1, yhalf, Width, xblocks4, xshift, xhalf,
+    yshift, yhalf, cArray);
   for (int y = yhalf; y < Heighta; y += yhalf)
   {
     const int temp1 = (y >> yshift)*xblocks4;
@@ -350,26 +362,8 @@ bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_un
     cmkp += cmk_pitch*yhalf;
     cmkpn += cmk_pitch*yhalf;
   }
-  for (int y = Heighta; y < Height - 1; ++y)
-  {
-    const int temp1 = (y >> yshift)*xblocks4;
-    const int temp2 = ((y + yhalf) >> yshift)*xblocks4;
-    for (int x = 0; x < Width; ++x)
-    {
-      if (cmkpp[x] == 0xFF && cmkp[x] == 0xFF && cmkpn[x] == 0xFF)
-      {
-        const int box1 = (x >> xshift) << 2;
-        const int box2 = ((x + xhalf) >> xshift) << 2;
-        ++cArray[temp1 + box1 + 0];
-        ++cArray[temp1 + box2 + 1];
-        ++cArray[temp2 + box1 + 2];
-        ++cArray[temp2 + box2 + 3];
-      }
-    }
-    cmkpp += cmk_pitch;
-    cmkp += cmk_pitch;
-    cmkpn += cmk_pitch;
-  }
+  countCombedRows(cmkpp, cmkp, cmkpn, cmk_pitch, Heighta, Height - 1, Width, xblocks4, xshift, xhalf,
+    yshift, yhalf, cArray);
   for (int x = 0; x < arraysize; ++x)
   {
     if (cArray[x] > mics[match])

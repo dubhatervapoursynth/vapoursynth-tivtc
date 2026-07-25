@@ -47,6 +47,63 @@ void Cycle::setFrame(int frameIn)
   frameEO = frame + cycleE;
 }
 
+// Mark `target` more frames of the cycle for decimation, lowest metric first, keeping marks at
+// least sdlim frames apart. If that spacing makes the target unreachable the limit is relaxed and
+// the pass retried: a negative sdlim steps it down one at a time, rolling the marks back each
+// pass, while a positive one is simply dropped. `which` only distinguishes the two error messages.
+void Cycle::markLowestForDecimation(int target, const char *which)
+{
+  const int istop = cycleE - cycleS;
+  int asd = abs(sdlim);
+  if (sdlim < 0)
+  {
+    dect = decimate;
+    dect2 = decimate2;
+  }
+  int v = 0;
+  while (true)
+  {
+    for (int i = 0; v < target && i < istop; ++i)
+    {
+      bool update = true;
+      for (int c = std::max(cycleS, lowest[i] - asd); c <= std::min(cycleE - 1, lowest[i] + asd); ++c)
+      {
+        if (decimate[c] == 1)
+        {
+          update = false;
+          break;
+        }
+      }
+      if (update)
+      {
+        decimate[lowest[i]] = 1;
+        int u = lowest[i];
+        while (decimate2[u] == 1) ++u;
+        decimate2[u] = 1;
+        ++v;
+      }
+    }
+    if (v == target) return;
+    int remain = 0;
+    for (int i = 0; i < istop; ++i)
+    {
+      if (decimate[lowest[i]] != 1)
+        ++remain;
+    }
+    if (remain <= 0 || asd <= 0)
+      throw TIVTCError(std::string("TIVTC-Cycle:  unable to mark the required number of frames "
+        "for decimation (") + which + ").");
+    if (sdlim < 0)
+    {
+      --asd;
+      decimate = dect;
+      decimate2 = dect2;
+      v = 0;
+    }
+    else asd = 0;
+  }
+}
+
 void Cycle::setDecimateLow(int num)
 {
   if (decSet) return;
@@ -63,58 +120,7 @@ void Cycle::setDecimateLow(int num)
     else ++ovrDec;
   }
   for (int i = std::max(cycleE, 0); i < length; ++i) decimate[i] = decimate2[i] = -20;
-  const int istop = cycleE - cycleS;
-  int asd = abs(sdlim);
-  if (sdlim < 0)
-  {
-    dect = decimate;
-    dect2 = decimate2;
-  }
-  int v = 0;
-mrestart:
-  for (int i = 0; v < num - ovrDec && i < istop; ++i)
-  {
-    bool update = true;
-    for (int c = std::max(cycleS, lowest[i] - asd); c <= std::min(cycleE - 1, lowest[i] + asd); ++c)
-    {
-      if (decimate[c] == 1)
-      {
-        update = false;
-        break;
-      }
-    }
-    if (update)
-    {
-      decimate[lowest[i]] = 1;
-      int u = lowest[i];
-      while (decimate2[u] == 1) ++u;
-      decimate2[u] = 1;
-      ++v;
-    }
-  }
-  if (v != num - ovrDec)
-  {
-    int remain = 0;
-    for (int i = 0; i < istop; ++i)
-    {
-      if (decimate[lowest[i]] != 1)
-        ++remain;
-    }
-    if (remain > 0 && asd > 0)
-    {
-      if (sdlim < 0)
-      {
-        --asd;
-        decimate = dect;
-        decimate2 = dect2;
-        v = 0;
-      }
-      else asd = 0;
-      goto mrestart;
-    }
-    throw TIVTCError("TIVTC-Cycle:  unable to mark the required number of frames " \
-      "for decimation (1).");
-  }
+  markLowestForDecimation(num - ovrDec, "1");
   decSet = true;
 }
 
@@ -125,58 +131,7 @@ void Cycle::setDecimateLowP(int num)
     for (int x = 0; x < length; ++x) decimate[x] = decimate2[x] = -20;
     return;
   }
-  const int istop = cycleE - cycleS;
-  int asd = abs(sdlim);
-  if (sdlim < 0)
-  {
-    dect = decimate;
-    dect2 = decimate2;
-  }
-  int v = 0;
-mrestart:
-  for (int i = 0; v < num && i < istop; ++i)
-  {
-    bool update = true;
-    for (int c = std::max(cycleS, lowest[i] - asd); c <= std::min(cycleE - 1, lowest[i] + asd); ++c)
-    {
-      if (decimate[c] == 1)
-      {
-        update = false;
-        break;
-      }
-    }
-    if (update)
-    {
-      decimate[lowest[i]] = 1;
-      int u = lowest[i];
-      while (decimate2[u] == 1) ++u;
-      decimate2[u] = 1;
-      ++v;
-    }
-  }
-  if (v != num)
-  {
-    int remain = 0;
-    for (int i = 0; i < istop; ++i)
-    {
-      if (decimate[lowest[i]] != 1)
-        ++remain;
-    }
-    if (remain > 0 && asd > 0)
-    {
-      if (sdlim < 0)
-      {
-        --asd;
-        decimate = dect;
-        decimate2 = dect2;
-        v = 0;
-      }
-      else asd = 0;
-      goto mrestart;
-    }
-    throw TIVTCError("TIVTC-Cycle:  unable to mark the required number of frames " \
-      "for decimation (2).");
-  }
+  markLowestForDecimation(num, "2");
 }
 
 void Cycle::setLowest(bool excludeD)

@@ -204,6 +204,8 @@ private:
   int getNonDecMode2(int n, int start, int stop) const;
   double buildDecStrategy();
   void mode2MarkDecFrames(int cycleF);
+  void markLowestMetrics(int x, int m, int stop2, int &dec,
+    const std::vector<uint64_t> &metrics, uint64_t *metricsT, int *orderT);
   void removeMinN(int m, int n, int start, int stop);
   void removeMinN(int m, int n, uint64_t *metricsT, int *orderT, int &ovrC);
   int findDivisor(double decRatio, int min_den) const;
