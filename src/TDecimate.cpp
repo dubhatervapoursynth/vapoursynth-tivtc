@@ -29,6 +29,7 @@
 #include "TCommonASM.h"
 #include <inttypes.h>
 #include <algorithm>
+#include <array>
 
 const VSFrame *TDecimate::GetFrame(int n, int activationReason, void **frameData, VSFrameContext *frameCtx, VSCore *core)
 {
@@ -64,7 +65,7 @@ struct OutputInfo {
     OutputType type;
     int f1, f2;
     double a1, a2;
-    std::vector<uint64_t> metrics;
+    std::vector<int64_t> metrics; // int64 to match mapSetIntArray; avoids type punning the buffer
 
     // For display only:
     int requested_frame_number; // requested from TDecimate
@@ -137,7 +138,7 @@ const VSFrame * TDecimate::GetFrameMode01(int n, int activationReason, void **fr
 
       if (first_frame_in_cycle) {
         vsapi->mapSetInt(props, PROP_TDecimateCycleStart, EvalGroup, maReplace);
-        vsapi->mapSetIntArray(props, PROP_TDecimateCycleMaxBlockDiff, (const int64_t *)o->metrics.data(), cycle);
+        vsapi->mapSetIntArray(props, PROP_TDecimateCycleMaxBlockDiff, o->metrics.data(), cycle);
       }
       vsapi->mapSetInt(props, PROP_TDecimateOriginalFrame, o->f1, maReplace);
 
@@ -156,7 +157,6 @@ const VSFrame * TDecimate::GetFrameMode01(int n, int activationReason, void **fr
     rerunFromStart(EvalGroup, frameCtx, core);
 
   lastn = n;
-//  if (ecf) child->SetCacheHints(EvalGroup, -20);
   if (curr.frame != EvalGroup)
   {
     prev = curr;
@@ -622,7 +622,6 @@ const VSFrame * TDecimate::GetFrameMode3(int n, int activationReason, void **fra
   {
     lastGroup = n;
     lastCycle += cycle;
-//    if (ecf) child->SetCacheHints(lastCycle, -20);
     prev = curr;
     if (prev.frame != lastCycle - cycle)
     {
@@ -1104,7 +1103,8 @@ void CalcMetricsExtracted(const VSFrame *prevt, const VSFrame *currt, CalcMetric
   // core start
 
   const uint8_t* prvp, * curp;
-  int prv_pitch, cur_pitch, width, height;
+  ptrdiff_t prv_pitch, cur_pitch;
+  int width, height;
 
   int xblocks = ((d.vi.width + d.blockx_half) >> d.blockx_shift) + 1;
   int xblocks4 = xblocks << 2;
@@ -1122,11 +1122,11 @@ void CalcMetricsExtracted(const VSFrame *prevt, const VSFrame *currt, CalcMetric
   {
     const int plane = b;
     prvp = vsapi->getReadPtr(prev, plane);
-    prv_pitch = (int)(vsapi->getStride(prev, plane) / pixelsize);
+    prv_pitch = vsapi->getStride(prev, plane) / pixelsize;
     width = vsapi->getFrameWidth(prev, plane);
     height = vsapi->getFrameHeight(prev, plane);
     curp = vsapi->getReadPtr(curr, plane);
-    cur_pitch = (int)(vsapi->getStride(curr, plane) / pixelsize);
+    cur_pitch = vsapi->getStride(curr, plane) / pixelsize;
 
     // sum is gathered in uint64_t diff
     // diff[] entries are normalized back to 8 bit
@@ -1950,11 +1950,9 @@ void TDecimate::findDupStrings(Cycle &p, Cycle &c, Cycle &n)
     c.decSet = true;
     return;
   }
-  int **dupStrings = (int**)malloc(dcnt * sizeof(int*));
-  for (int z = 0; z < dcnt; ++z)
-    dupStrings[z] = (int*)malloc(3 * sizeof(int));
-  for (i = 0; i < dcnt; ++i)
-    dupStrings[i][0] = dupStrings[i][1] = dupStrings[i][2] = -20;
+  // Was a hand-rolled int** of malloc'd rows: the allocations went unchecked, and
+  // setDecimateLowP() below can throw, which leaked the whole thing.
+  std::vector<std::array<int, 3>> dupStrings(dcnt, { -20, -20, -20 });
   for (w = 0, i = c.cycleS; i < c.cycleE; ++i)
   {
     if (c.dupArray[i] == 0) continue;
@@ -2072,9 +2070,6 @@ void TDecimate::findDupStrings(Cycle &p, Cycle &c, Cycle &n)
     c.setLowest(true);
     c.setDecimateLowP(cycleRt - ovrdups - v);
   }
-  for (int z = 0; z < dcnt; ++z)
-    free(dupStrings[z]);
-  free(dupStrings);
 }
 
 void TDecimate::checkVideoMatches(Cycle &p, Cycle &c)
@@ -2261,8 +2256,7 @@ void TDecimate::calcBlendRatios2(double &amount1, double &amount2, int &frame1, 
   int i, b, k;
   int cycleI = c.cycleE - c.cycleS;
   int cycleD = cycleI - remove;
-  int *lutf = (int *)malloc((cycleI + 2) * sizeof(int));
-  for (i = 0; i < cycleI + 2; ++i) lutf[i] = -20;
+  std::vector<int> lutf(cycleI + 2, -20);
   double stepsize = ((double)cycleD) / ((double)(cycleI));
   double offset = (cycleI - 1)*stepsize;
   offset = (offset - int(offset))*0.5;
@@ -2302,7 +2296,7 @@ void TDecimate::calcBlendRatios2(double &amount1, double &amount2, int &frame1, 
   amount1 = 1.0 - posf;
   amount2 = posf;
   // amount 1 and 2 sum is always 1.0, some routines know this and use only amount1
-  free(lutf);
+  // lutf is a std::vector now, nothing to free
 }
 
 // used in GetFrameMode01
@@ -2313,7 +2307,7 @@ void TDecimate::blendFrames(const VSFrame *src1, const VSFrame *src2, VSFrame *d
   const uint8_t *srcp1, *srcp2;
   uint8_t *dstp;
   int width, height;
-  int s1_pitch, dst_pitch, s2_pitch;
+  ptrdiff_t s1_pitch, dst_pitch, s2_pitch;
 
   const float weight_f = (float)amount1;
 
@@ -2340,13 +2334,13 @@ void TDecimate::blendFrames(const VSFrame *src1, const VSFrame *src2, VSFrame *d
   {
     const int plane = b;
     srcp1 = vsapi->getReadPtr(src1, plane);
-    s1_pitch = (int)(vsapi->getStride(src1, plane));
+    s1_pitch = vsapi->getStride(src1, plane);
     width = vsapi->getFrameWidth(src1, plane);
     height = vsapi->getFrameHeight(src1, plane);
     srcp2 = vsapi->getReadPtr(src2, plane);
-    s2_pitch = (int)(vsapi->getStride(src2, plane));
+    s2_pitch = vsapi->getStride(src2, plane);
     dstp = vsapi->getWritePtr(dst, plane);
-    dst_pitch = (int)(vsapi->getStride(dst, plane));
+    dst_pitch = vsapi->getStride(dst, plane);
 
     dispatch_blend(dstp, srcp1, srcp2, width, height, dst_pitch, s1_pitch, s2_pitch, weight_i, bits_per_pixel);
   }
@@ -2911,7 +2905,7 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
 //    sprintf(buf, "TDecimate:  %s by tritical\n", VERSION);
 //    OutputDebugString(buf);
 //  }
-  ecf = false;
+
   if (cycle > 5 && mode != 4 && mode != 6 && mode != 7)
   {
     prev.setSize(cycle);
@@ -2926,26 +2920,8 @@ TDecimate::TDecimate(VSNode *_child, int _mode, int _cycleR, int _cycle, double 
     next.sdlim = sdlim;
     nbuf.sdlim = sdlim;
   }
-  if (mode == 4 || mode == 5 || mode == 6) {
-//    child->SetCacheHints(CACHE_GENERIC, 3);
-  }
-  else if (mode != 2 && mode != 7)
-  {
-    int cacheRange = cycle * 4 + 1;
-    if (cacheRange < 1) cacheRange = 1;
-    if (input.size() || cycle >= 26)
-    {
-//      if (cacheRange > 100)
-//        child->SetCacheHints(CACHE_GENERIC, 100);
-//      else
-//        child->SetCacheHints(CACHE_GENERIC, cacheRange);
-    }
-    else
-    {
-      ecf = true; // ecf is not used anywhere. It had to do with the cache manipulation, which we can't do in VapourSynth.
-//      child->SetCacheHints(0, -20);
-    }
-  }
+  // The AviSynth original sized the source cache here via SetCacheHints. VapourSynth's API 4
+  // core manages caches itself, so there is nothing to configure.
 
   if (vidDetect == 4)
   {

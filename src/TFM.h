@@ -101,11 +101,11 @@ private:
   uint32_t outputCrc;
   uint64_t diffmaxsc;
   // True for the modes whose result depends on the previously processed frame (mode 7's field
-  // carry-over, d2v duplicate detection). API 4 has no nfMakeLinear, so GetFrame verifies the
-  // request order itself and errors out rather than silently producing scheduling-dependent
-  // output. Only when this is set may lastMatch influence a decision.
+  // carry-over, d2v duplicate detection). Only when this is set may lastMatch influence a
+  // decision, which keeps every other mode's output independent of request scheduling.
+  // Note that API 4 has no nfMakeLinear: even here the order is not guaranteed, so the users of
+  // lastMatch still have to check that it really holds frame n-1.
   bool linearAccess;
-  int linearCount; // next frame number expected when linearAccess is set; modified in GetFrame
   
   std::unique_ptr<int, decltype (&vsh::vsh_aligned_free)> cArray; // modified in GetFrame
   std::vector<int> setArray;
@@ -119,7 +119,7 @@ private:
   std::vector<uint8_t> d2vfilmarray;
 
   std::unique_ptr<uint8_t, decltype (&vsh::vsh_aligned_free)> tbuffer; // absdiff buffer // modified in GetFrame
-  int tpitchy, tpitchuv;
+  ptrdiff_t tpitchy, tpitchuv;
 
   std::vector<int> moutArray; // modified in GetFrame, but only the element corresponding to frame n
   std::vector<int> moutArrayE; // modified in GetFrame, but only the elements corresponding to frame n
@@ -132,12 +132,12 @@ private:
 
   template<typename pixel_t>
   void buildDiffMapPlane_Planar(const uint8_t *prvp, const uint8_t *nxtp,
-    uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
-    int Width, int tpitch, int bits_per_pixel);
+    uint8_t *dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
+    int Width, ptrdiff_t tpitch, int bits_per_pixel);
   
   template<typename pixel_t>
   void buildDiffMapPlane2(const uint8_t *prvp, const uint8_t *nxtp,
-    uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
+    uint8_t *dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
     int Width, int bits_per_pixel) const;
 
   void fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int mics[5]);
@@ -209,7 +209,7 @@ private:
   // fixme: hbd!
   template<typename pixel_t>
   void buildABSDiffMask(const uint8_t *prvp, const uint8_t *nxtp,
-    int prv_pitch, int nxt_pitch, int tpitch, int width, int height) const;
+    ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height) const;
 
   void generateOvrHelpOutput(FILE *f) const;
 

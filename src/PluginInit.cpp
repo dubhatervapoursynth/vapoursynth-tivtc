@@ -35,40 +35,28 @@
 #include "TDecimate.h"
 
 
-static const VSFrame *VS_CC tfmGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    (void)frameData;
-    (void)vsapi;
-
+static const VSFrame *VS_CC tfmGetFrame(int n, int activationReason, void *instanceData, [[maybe_unused]] void **frameData, VSFrameContext *frameCtx, VSCore *core, [[maybe_unused]] const VSAPI *vsapi) {
     TFM *d = (TFM *)instanceData;
 
     return d->GetFrame(n, activationReason, frameCtx, core);
 }
 
 
-static void VS_CC tfmFree(void *instanceData, VSCore *core, const VSAPI *vsapi) {
-    (void)core;
-    (void)vsapi;
-
+static void VS_CC tfmFree(void *instanceData, [[maybe_unused]] VSCore *core, [[maybe_unused]] const VSAPI *vsapi) {
     TFM *d = (TFM *)instanceData;
 
     delete d;
 }
 
 
-static const VSFrame *VS_CC tfmppGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    (void)frameData;
-    (void)vsapi;
-
+static const VSFrame *VS_CC tfmppGetFrame(int n, int activationReason, void *instanceData, [[maybe_unused]] void **frameData, VSFrameContext *frameCtx, VSCore *core, [[maybe_unused]] const VSAPI *vsapi) {
     TFMPP *d = (TFMPP *)instanceData;
 
     return d->GetFrame(n, activationReason, frameCtx, core);
 }
 
 
-static void VS_CC tfmppFree(void *instanceData, VSCore *core, const VSAPI *vsapi) {
-    (void)core;
-    (void)vsapi;
-
+static void VS_CC tfmppFree(void *instanceData, [[maybe_unused]] VSCore *core, [[maybe_unused]] const VSAPI *vsapi) {
     TFMPP *d = (TFMPP *)instanceData;
 
     delete d;
@@ -128,9 +116,7 @@ static void VS_CC tivtcDisplayFunc(const VSMap *in, VSMap *out, void *userData, 
 }
 
 
-static void VS_CC tfmCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
-    (void)userData;
-
+static void VS_CC tfmCreate(const VSMap *in, VSMap *out, [[maybe_unused]] void *userData, VSCore *core, const VSAPI *vsapi) {
     int err;
 
     int order = vsh::int64ToIntS(vsapi->mapGetInt(in, "order", 0, &err));
@@ -286,11 +272,12 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, void *userData, VSCore 
         return;
     }
 
-    // mode 7 requires linear access to function correctly, and so does d2v duplicate detection:
-    // it decides frame n from the match chosen for frame n-1. API 3 could ask the core to enforce
-    // that with nfMakeLinear; API 4 has no equivalent (setLinearFilter only enables the cacheFrame
-    // API for filters that *produce* linearly), so these modes run serialized and TFM itself
-    // rejects out-of-order requests. Keep this condition in sync with TFM::linearAccess.
+    // mode 7 carries state between frames and so does d2v duplicate detection: both decide frame
+    // n partly from the match chosen for frame n-1. API 3 could ask the core for in-order
+    // requests with nfMakeLinear; API 4 has no equivalent (setLinearFilter only enables the
+    // cacheFrame API for filters that *produce* linearly), so the best available is fmUnordered,
+    // which at least serializes the state. The carried state is only consulted when it really is
+    // frame n-1 -- see TFM::linearAccess, which this condition must stay in sync with.
     const bool needLinear = (mode == 7 || d2v[0] != '\0');
 
     // TFM reads prv/src/nxt, so any given source frame feeds three output frames: rpGeneral.
@@ -371,28 +358,21 @@ static void VS_CC tfmCreate(const VSMap *in, VSMap *out, void *userData, VSCore 
 }
 
 
-static const VSFrame *VS_CC tdecimateGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    (void)vsapi;
-
+static const VSFrame *VS_CC tdecimateGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, [[maybe_unused]] const VSAPI *vsapi) {
     TDecimate *d = (TDecimate *)instanceData;
 
     return d->GetFrame(n, activationReason, frameData, frameCtx, core);
 }
 
 
-static void VS_CC tdecimateFree(void *instanceData, VSCore *core, const VSAPI *vsapi) {
-    (void)core;
-    (void)vsapi;
-
+static void VS_CC tdecimateFree(void *instanceData, [[maybe_unused]] VSCore *core, [[maybe_unused]] const VSAPI *vsapi) {
     TDecimate *d = (TDecimate *)instanceData;
 
     delete d;
 }
 
 
-static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
-    (void)userData;
-
+static void VS_CC tdecimateCreate(const VSMap *in, VSMap *out, [[maybe_unused]] void *userData, VSCore *core, const VSAPI *vsapi) {
     int err;
 
     VSNode *clip = vsapi->mapGetNode(in, "clip", 0, nullptr); /// move lower if possible

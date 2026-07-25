@@ -37,8 +37,8 @@ void FillCombedPlanarUpdateCmaskByUV(VSFrame* cmask, const VSAPI *vsapi)
   uint8_t* cmkpV = vsapi->getWritePtr(cmask, 2);
   const int Width = vsapi->getFrameWidth(cmask, 2); // chroma!
   const int Height = vsapi->getFrameHeight(cmask, 2);
-  const int cmk_pitch = (int)(vsapi->getStride(cmask, 0));
-  const int cmk_pitchUV = (int)(vsapi->getStride(cmask, 2));
+  const ptrdiff_t cmk_pitch = vsapi->getStride(cmask, 0);
+  const ptrdiff_t cmk_pitchUV = vsapi->getStride(cmask, 2);
   do_FillCombedPlanarUpdateCmaskByUV<planarType>(cmkp, cmkpU, cmkpV, Width, Height, cmk_pitch, cmk_pitchUV);
 }
 
@@ -73,7 +73,7 @@ void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chro
     const int plane = b;
 
     const pixel_t* srcp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
-    const int src_pitch = (int)(vsapi->getStride(src, plane) / sizeof(pixel_t));
+    const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
 
     const int Width = vsapi->getFrameWidth(src, plane);
     const int Height = vsapi->getFrameHeight(src, plane);
@@ -84,7 +84,7 @@ void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chro
     const pixel_t* srcpnn = srcpn + src_pitch;
 
     uint8_t* cmkp = vsapi->getWritePtr(cmask, b);
-    const int cmk_pitch = (int)(vsapi->getStride(cmask, b));
+    const ptrdiff_t cmk_pitch = vsapi->getStride(cmask, b);
 
     if (scaled_cthresh < 0) {
       memset(cmkp, 255, Height * cmk_pitch); // mask. Always 8 bits 
@@ -248,16 +248,11 @@ bool TFM::checkCombedPlanar(const VSFrame *src, int n, int match,
 }
 
 template<typename pixel_t>
-bool TFM::checkCombedPlanar_core(const VSFrame *src, int n, int match,
-  int* blockN, int& xblocksi, int* mics, bool ddebug, int bits_per_pixel)
+bool TFM::checkCombedPlanar_core([[maybe_unused]] const VSFrame *src, [[maybe_unused]] int n, int match,
+  int* blockN, int& xblocksi, int* mics, [[maybe_unused]] bool ddebug, [[maybe_unused]] int bits_per_pixel)
 {
-    (void)src;
-    (void)n;
-    (void)ddebug;
-    (void)bits_per_pixel;
 
-
-  const int cmk_pitch = (int)(vsapi->getStride(cmask.get(), 0));
+  const ptrdiff_t cmk_pitch = vsapi->getStride(cmask.get(), 0);
   const uint8_t *cmkp = vsapi->getWritePtr(cmask.get(), 0) + cmk_pitch;
   const uint8_t *cmkpp = cmkp - cmk_pitch;
   const uint8_t *cmkpn = cmkp + cmk_pitch;
@@ -404,8 +399,8 @@ bool TFM::checkCombedPlanar_core(const VSFrame *src, int n, int match,
 
 template<typename pixel_t>
 void TFM::buildDiffMapPlane_Planar(const uint8_t *prvp, const uint8_t *nxtp,
-  uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
-  int Width, int tpitch, int bits_per_pixel)
+  uint8_t *dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
+  int Width, ptrdiff_t tpitch, int bits_per_pixel)
 {
   buildABSDiffMask<pixel_t>(prvp - prv_pitch, nxtp - nxt_pitch, prv_pitch, nxt_pitch, tpitch, Width, Height >> 1);
   switch (bits_per_pixel) {
@@ -419,10 +414,10 @@ void TFM::buildDiffMapPlane_Planar(const uint8_t *prvp, const uint8_t *nxtp,
 
 // instantiate
 template void TFM::buildDiffMapPlane_Planar<uint8_t>(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
-  int Width, int tpitch, int bits_per_pixel);
+  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
+  int Width, ptrdiff_t tpitch, int bits_per_pixel);
 template void TFM::buildDiffMapPlane_Planar<uint16_t>(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
-  int Width, int tpitch, int bits_per_pixel);
+  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
+  int Width, ptrdiff_t tpitch, int bits_per_pixel);
 
 

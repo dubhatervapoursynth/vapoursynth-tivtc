@@ -100,7 +100,8 @@ void calcCRC(VSNode *hclip, int stop, unsigned int &crc, const VSAPI *vsapi)
   const VSFrame *src;
   const unsigned int *ptrCrcTable = Crc32Table;
   const uint8_t *buffer;
-  int width, height, pitch, modulo, x;
+  int width, height, x;
+  ptrdiff_t pitch, modulo;
   const VSVideoInfo *vi2 = vsapi->getVideoInfo(hclip);
   if (stop > vi2->numFrames) stop = vi2->numFrames;
   for (x = 0; x < stop; ++x)
@@ -109,7 +110,7 @@ void calcCRC(VSNode *hclip, int stop, unsigned int &crc, const VSAPI *vsapi)
     if (src == nullptr) break; // upstream render failure: abort CRC (caller will report a mismatch)
     buffer = vsapi->getReadPtr(src, 0);
     width = vsapi->getFrameWidth(src, 0) * vsapi->getVideoFrameFormat(src)->bytesPerSample;
-    pitch = (int)(vsapi->getStride(src, 0));
+    pitch = vsapi->getStride(src, 0);
     height = vsapi->getFrameHeight(src, 0);
     modulo = pitch - width;
     while (height--) {

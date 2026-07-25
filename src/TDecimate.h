@@ -136,7 +136,7 @@ private:
   struct { int vidC = 0, filmC = 0, longestT = 0, longestV = 0, countVT = 0; double timestamp = 0.0; } m3stats;
   uint64_t MAX_DIFF, sceneThreshU, sceneDivU, diff_thresh, same_thresh;
   double fps, mkvfps, mkvfps2;
-  bool useTFMPP, cve, ecf, fullInfo;
+  bool useTFMPP, cve, fullInfo;
   bool usehints;
   std::unique_ptr<uint64_t, decltype (&vsh::vsh_aligned_free)> diff;
   std::vector<uint64_t> metricsArray, metricsOutArray, mode2_metrics;

@@ -59,11 +59,11 @@ void HorizontalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
   {
     const int plane = b;
     const uint8_t *srcp = vsapi->getReadPtr(src, plane);
-    int src_pitch = (int)(vsapi->getStride(src, plane));
+    ptrdiff_t src_pitch = vsapi->getStride(src, plane);
     int width = vsapi->getFrameWidth(src, plane);
     int height = vsapi->getFrameHeight(src, plane);
     uint8_t *dstp = vsapi->getWritePtr(dst, plane);
-    int dst_pitch = (int)(vsapi->getStride(dst, plane));
+    ptrdiff_t dst_pitch = vsapi->getStride(dst, plane);
 
       if(pixelsize == 1)
         HorizontalBlur_Planar_c<uint8_t>(srcp, dstp, src_pitch, dst_pitch, width, height, false);
@@ -73,8 +73,8 @@ void HorizontalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
 }
 
 template<typename pixel_t>
-void VerticalBlur_c(const uint8_t* srcp0, uint8_t* dstp0, int src_pitch,
-  int dst_pitch, int width, int height)
+void VerticalBlur_c(const uint8_t* srcp0, uint8_t* dstp0, ptrdiff_t src_pitch,
+  ptrdiff_t dst_pitch, int width, int height)
 {
   if (width == 0) return;
 
@@ -121,11 +121,11 @@ void VerticalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
   {
     const int plane = b;
     const uint8_t* srcp = vsapi->getReadPtr(src, plane);
-    int src_pitch = (int)(vsapi->getStride(src, plane));
+    ptrdiff_t src_pitch = vsapi->getStride(src, plane);
     int width = vsapi->getFrameWidth(src, plane);
     int height = vsapi->getFrameHeight(src, plane);
     uint8_t* dstp = vsapi->getWritePtr(dst, plane);
-    int dst_pitch = (int)(vsapi->getStride(dst, plane));
+    ptrdiff_t dst_pitch = vsapi->getStride(dst, plane);
 
       if(pixelsize == 1)
         VerticalBlur_c<uint8_t>(srcp, dstp, src_pitch, dst_pitch, width, height);
@@ -136,8 +136,8 @@ void VerticalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
 }
 
 template<typename pixel_t>
-void HorizontalBlur_Planar_c(const uint8_t* srcp0, uint8_t* dstp0, int src_pitch,
-  int dst_pitch, int width, int height, bool allow_leftminus1)
+void HorizontalBlur_Planar_c(const uint8_t* srcp0, uint8_t* dstp0, ptrdiff_t src_pitch,
+  ptrdiff_t dst_pitch, int width, int height, bool allow_leftminus1)
 {
   if (width == 0)
     return;

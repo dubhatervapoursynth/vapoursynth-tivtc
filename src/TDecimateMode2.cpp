@@ -50,26 +50,24 @@ const VSFrame * TDecimate::GetFrameMode2(int n, int activationReason, void **fra
     if (cycleF == -20) cycleF = mode2_numCycles - 1;
 
     if (activationReason == arInitial) {
-        if (cycleF > 0) {
-            int start = aLUT[(cycleF - 1) * 5] - 1;
-            int end = start + curr.length;
+        // calcMetricCycle() walks frames [first, first + length) of a cycle and reads each frame
+        // together with its predecessor, so a cycle needs length + 1 frames starting one before
+        // it. Requesting only `length` of them left the cycle's last frame unrequested, and
+        // getFrameFilter() returns NULL for anything that was not requested.
+        auto requestCycle = [&](int firstFrame) {
+            const int start = firstFrame - 1;
+            const int end = start + curr.length + 1;
             for (int i = start; i < end; i++)
                 vsapi->requestFrameFilter(std::max(0, std::min(i, vi_child->numFrames - 1)), child, frameCtx);
-        }
+        };
 
-        {
-            int start = aLUT[cycleF * 5] - 1;
-            int end = start + curr.length;
-            for (int i = start; i < end; i++)
-                vsapi->requestFrameFilter(std::max(0, std::min(i, vi_child->numFrames - 1)), child, frameCtx);
-        }
+        if (cycleF > 0)
+            requestCycle(aLUT[(cycleF - 1) * 5]);
 
-        if (cycleF < mode2_numCycles - 1) {
-            int start = aLUT[(cycleF + 1) * 5] - 1;
-            int end = start + curr.length;
-            for (int i = start; i < end; i++)
-                vsapi->requestFrameFilter(std::max(0, std::min(i, vi_child->numFrames - 1)), child, frameCtx);
-        }
+        requestCycle(aLUT[cycleF * 5]);
+
+        if (cycleF < mode2_numCycles - 1)
+            requestCycle(aLUT[(cycleF + 1) * 5]);
 
         return nullptr;
     }

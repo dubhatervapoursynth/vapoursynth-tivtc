@@ -48,21 +48,6 @@ const VSFrame *TFM::GetFrame(int n, int activationReason, VSFrameContext *frameC
       return nullptr;
   }
 
-  // mode 7 carries the chosen field over from the previous frame and d2v duplicate detection
-  // compares against the previous frame's match, so both are only meaningful for in-order
-  // requests. API 3 asked the core to guarantee that with nfMakeLinear; API 4 has no such flag,
-  // so report the violation instead of quietly returning a scheduling-dependent frame.
-  if (linearAccess) {
-      if (n != linearCount) {
-          vsapi->setFilterError(mode == 7
-              ? "TFM: non-linear access detected; mode 7 requires the output to be requested in order."
-              : "TFM: non-linear access detected; using a d2v file requires the output to be requested in order.",
-              frameCtx);
-          return nullptr;
-      }
-      ++linearCount;
-  }
-
   const VSFrame *prv = vsapi->getFrameFilter(std::max(0, n - 1), child, frameCtx);
   const VSFrame *src = vsapi->getFrameFilter(n, child, frameCtx);
   const VSFrame *nxt = vsapi->getFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
@@ -610,7 +595,7 @@ void TFM::micChange(int n, int m1, int m2, VSFrame *dst, const VSFrame *prv,
 }
 
 void TFM::writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
-  int blockN, int xblocks, bool d2vmatch, int *mics, const VSFrame *prv,
+  [[maybe_unused]] int blockN, [[maybe_unused]] int xblocks, bool d2vmatch, int *mics, const VSFrame *prv,
   const VSFrame *src, const VSFrame *nxt)
 {
     // Doesn't actually display anything, just sets a frame property which text.Text will display.
@@ -621,8 +606,6 @@ void TFM::writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
   if (combed > 1 && PP > 1) return; // TFMPP will display things instead
 
   /// TODO: draw the box
-  (void)blockN;
-  (void)xblocks;
 //  if (combed > 1 && PP == 1 && blockN != -20)
 //  {
 //    drawBox(dst, blockx, blocky, blockN, xblocks, vi);
@@ -847,10 +830,8 @@ int TFM::compareFields(const VSFrame *prv, const VSFrame *src, const VSFrame *nx
 
 template<typename pixel_t>
 int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
-  int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n)
+  int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, [[maybe_unused]] int n)
 {
-    (void)n;
-
   const int bits_per_pixel = vi->format.bitsPerSample;
 
   int ret;
@@ -869,25 +850,25 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
     const int plane = b;
 
     uint8_t *mapp = vsapi->getWritePtr(map.get(), b);
-    int map_pitch = (int)(vsapi->getStride(map.get(), b));
+    ptrdiff_t map_pitch = vsapi->getStride(map.get(), b);
 
     const pixel_t* prvp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(prv, plane));
-    const int prv_pitch = (int)(vsapi->getStride(prv, plane) / sizeof(pixel_t));
+    const ptrdiff_t prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
 
     const pixel_t* srcp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
-    const int src_pitch = (int)(vsapi->getStride(src, plane) / sizeof(pixel_t));
+    const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
 
     const int Width = vsapi->getFrameWidth(src, plane);
     const int Height = vsapi->getFrameHeight(src, plane);
 
     const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
-    const int nxt_pitch = (int)(vsapi->getStride(nxt, plane) / sizeof(pixel_t));
+    const ptrdiff_t nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
 
     const int startx = 8 >> (plane ? vi->format.subSamplingW : 0);
     const int stopx = Width - startx;
 
     const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
-    int prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
+    ptrdiff_t prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
 
     curf_pitch = src_pitch << 1;
     // exclusion area limits from parameters
@@ -933,7 +914,7 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
       prvpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
       mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
     }
-    else if (match1 == 4)
+    else // match1 == 4; the callers only ever pass 0..4
     {
       curf = srcp + ((2 + field)*src_pitch);
       prvf_pitch = nxt_pitch << 1;
@@ -960,7 +941,7 @@ int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFram
       nxtf_pitch = prv_pitch << 1;
       nxtpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
     }
-    else if (match2 == 4)
+    else // match2 == 4; the callers only ever pass 0..4
     {
       nxtf_pitch = nxt_pitch << 1;
       nxtpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
@@ -1097,16 +1078,14 @@ int TFM::compareFieldsSlow(const VSFrame *prv, const VSFrame *src, const VSFrame
 
 template<typename pixel_t>
 int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
-  int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n)
+  int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, [[maybe_unused]] int n)
 {
-    (void)n;
-
   const int bits_per_pixel = vi->format.bitsPerSample;
 
   int ret;
   int y0a, y1a;  // exclusion regio
 
-  int tpitch_current;
+  ptrdiff_t tpitch_current;
 
   const int stop = vi->format.numPlanes == 1 || !mChroma ? 1 : 3;
   const int incl = 1;  // pixel increment (1 for planar)
@@ -1121,25 +1100,25 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
     const int plane = b;
 
     uint8_t* mapp = vsapi->getWritePtr(map.get(), b);
-    int map_pitch = (int)(vsapi->getStride(map.get(), b));
+    ptrdiff_t map_pitch = vsapi->getStride(map.get(), b);
 
     const pixel_t* prvp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(prv, plane));
-    const int prv_pitch = (int)(vsapi->getStride(prv, plane) / sizeof(pixel_t));
+    const ptrdiff_t prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
 
     const pixel_t* srcp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
-    const int src_pitch = (int)(vsapi->getStride(src, plane) / sizeof(pixel_t));
+    const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
 
     const int Width = vsapi->getFrameWidth(src, plane);
     const int Height = vsapi->getFrameHeight(src, plane);
 
     const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
-    const int nxt_pitch = (int)(vsapi->getStride(nxt, plane) / sizeof(pixel_t));
+    const ptrdiff_t nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
 
     const int startx = 8 >> (plane ? vi->format.subSamplingW : 0);
     const int stopx = Width - startx;
 
     const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
-    int prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
+    ptrdiff_t prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
 
     curf_pitch = src_pitch << 1;
 
@@ -1190,7 +1169,7 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
       prvpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
       mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
     }
-    else if (match1 == 4)
+    else // match1 == 4; the callers only ever pass 0..4
     {
       curf = srcp + ((2 + field)*src_pitch);
       prvf_pitch = nxt_pitch << 1;
@@ -1217,7 +1196,7 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
       nxtf_pitch = prv_pitch << 1;
       nxtpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
     }
-    else if (match2 == 4)
+    else // match2 == 4; the callers only ever pass 0..4
     {
       nxtf_pitch = nxt_pitch << 1;
       nxtpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
@@ -1357,16 +1336,14 @@ int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VS
 
 template<typename pixel_t>
 int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
-  int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n)
+  int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, [[maybe_unused]] int n)
 {
-    (void)n;
-
   const int bits_per_pixel = vi->format.bitsPerSample;
 
   int ret;
   int y0a, y1a;  // exclusion regio
 
-  int tpitch_current;
+  ptrdiff_t tpitch_current;
 
   const int stop = vi->format.numPlanes == 1 || !mChroma ? 1 : 3;
   int incl = 1;  // pixel increment (1 for planar)
@@ -1380,25 +1357,25 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
   {
     const int plane = b;
     uint8_t* mapp = vsapi->getWritePtr(map.get(), b);
-    int map_pitch = (int)(vsapi->getStride(map.get(), b));
+    ptrdiff_t map_pitch = vsapi->getStride(map.get(), b);
 
     const pixel_t* prvp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(prv, plane));
-    const int prv_pitch = (int)(vsapi->getStride(prv, plane) / sizeof(pixel_t));
+    const ptrdiff_t prv_pitch = vsapi->getStride(prv, plane) / sizeof(pixel_t);
 
     const pixel_t* srcp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(src, plane));
-    const int src_pitch = (int)(vsapi->getStride(src, plane) / sizeof(pixel_t));
+    const ptrdiff_t src_pitch = vsapi->getStride(src, plane) / sizeof(pixel_t);
 
     const int Width = vsapi->getFrameWidth(src, plane);
     const int Height = vsapi->getFrameHeight(src, plane);
 
     const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
-    const int nxt_pitch = (int)(vsapi->getStride(nxt, plane) / sizeof(pixel_t));
+    const ptrdiff_t nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
 
     const int startx = 8 >> (plane ? vi->format.subSamplingW : 0);
     const int stopx = Width - startx;
 
     const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
-    int prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
+    ptrdiff_t prvf_pitch = 0, curf_pitch, nxtf_pitch = 0;
 
     curf_pitch = src_pitch << 1;
 
@@ -1449,7 +1426,7 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
       prvpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
       mapp = mapp + ((field == 1 ? 2 : 1)*map_pitch);
     }
-    else if (match1 == 4)
+    else // match1 == 4; the callers only ever pass 0..4
     {
       curf = srcp + ((2 + field)*src_pitch);
       prvf_pitch = nxt_pitch << 1;
@@ -1476,7 +1453,7 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
       nxtf_pitch = prv_pitch << 1;
       nxtpf = prvp + ((field == 1 ? 2 : 1)*prv_pitch);
     }
-    else if (match2 == 4)
+    else // match2 == 4; the callers only ever pass 0..4
     {
       nxtf_pitch = nxt_pitch << 1;
       nxtpf = nxtp + ((field == 1 ? 2 : 1)*nxt_pitch);
@@ -1757,7 +1734,7 @@ int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const V
 
 template<typename pixel_t>
 static void checkSceneChangePlanar_1_c(const pixel_t* srcp, const pixel_t* nxtp,
-  int height, int width, int src_pitch, int nxt_pitch, uint64_t& diff)
+  int height, int width, ptrdiff_t src_pitch, ptrdiff_t nxt_pitch, uint64_t& diff)
 {
   for (int y = 0; y < height; ++y)
   {
@@ -1777,8 +1754,8 @@ static void checkSceneChangePlanar_1_c(const pixel_t* srcp, const pixel_t* nxtp,
 
 template<typename pixel_t>
 static void checkSceneChangePlanar_2_c(const pixel_t* prvp, const pixel_t* srcp,
-  const pixel_t* nxtp, int height, int width, int prv_pitch, int src_pitch,
-  int nxt_pitch, uint64_t& diffp, uint64_t& diffn)
+  const pixel_t* nxtp, int height, int width, ptrdiff_t prv_pitch, ptrdiff_t src_pitch,
+  ptrdiff_t nxt_pitch, uint64_t& diffp, uint64_t& diffn)
 {
   for (int y = 0; y < height; ++y)
   {
@@ -1834,9 +1811,9 @@ bool TFM::checkSceneChange_core(const VSFrame *prv, const VSFrame *src, const VS
     width = ((width >> 4) << 4); // mod16
 
   // every 2nd line
-  int prv_pitch = (int)(vsapi->getStride(prv, 0) << 1);
-  int src_pitch = (int)(vsapi->getStride(src, 0) << 1);
-  int nxt_pitch = (int)(vsapi->getStride(nxt, 0) << 1);
+  ptrdiff_t prv_pitch = vsapi->getStride(prv, 0) << 1;
+  ptrdiff_t src_pitch = vsapi->getStride(src, 0) << 1;
+  ptrdiff_t nxt_pitch = vsapi->getStride(nxt, 0) << 1;
   prvp += (1 - field)*(prv_pitch >> 1);
   srcp += (1 - field)*(src_pitch >> 1);
   nxtp += (1 - field)*(nxt_pitch >> 1);
@@ -1985,7 +1962,7 @@ void TFM::putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, 
 // check in TDeint, plus don't call with aligned width!
 template<typename pixel_t>
 void TFM::buildDiffMapPlane2(const uint8_t *prvp, const uint8_t *nxtp,
-  uint8_t *dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
+  uint8_t *dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
   int Width, int bits_per_pixel) const
 {
   do_buildABSDiffMask2<pixel_t>(prvp, nxtp, dstp, prv_pitch, nxt_pitch, dst_pitch, Width, Height, bits_per_pixel);
@@ -1993,24 +1970,24 @@ void TFM::buildDiffMapPlane2(const uint8_t *prvp, const uint8_t *nxtp,
 
 // instantiate
 template void TFM::buildDiffMapPlane2<uint8_t>(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
+  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
   int Width, int bits_per_pixel) const;
 template void TFM::buildDiffMapPlane2<uint16_t>(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int Height,
+  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int Height,
   int Width, int bits_per_pixel) const;
 
 template<typename pixel_t>
 void TFM::buildABSDiffMask(const uint8_t *prvp, const uint8_t *nxtp,
-  int prv_pitch, int nxt_pitch, int tpitch, int width, int height) const
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height) const
 {
   do_buildABSDiffMask<pixel_t>(prvp, nxtp, tbuffer.get(), prv_pitch, nxt_pitch, tpitch, width, height);
 }
 
 // instantiate
 template void TFM::buildABSDiffMask<uint8_t>(const uint8_t* prvp, const uint8_t* nxtp,
-  int prv_pitch, int nxt_pitch, int tpitch, int width, int height) const;
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height) const;
 template void TFM::buildABSDiffMask<uint16_t>(const uint8_t* prvp, const uint8_t* nxtp,
-  int prv_pitch, int nxt_pitch, int tpitch, int width, int height) const;
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height) const;
 
 
 //AVSValue __cdecl Create_TFM(AVSValue args, void* user_data, IScriptEnvironment* env)
@@ -2158,7 +2135,6 @@ TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char*
   // These modes depend on the previously processed frame. PluginInit must keep this condition in
   // sync with the filter mode it picks; GetFrame enforces the ordering.
   linearAccess = (mode == 7) || d2v.size() > 0;
-  linearCount = 0;
 
   sclast.frame = -20;
   sclast.sc = true;

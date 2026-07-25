@@ -29,8 +29,8 @@
 #include <assert.h>
 
 static void blend_uint8_c(uint8_t* dstp, const uint8_t* srcp1,
-  const uint8_t* srcp2, int width, int height, int dst_pitch,
-  int src1_pitch, int src2_pitch, int weight_i)
+  const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch,
+  ptrdiff_t src1_pitch, ptrdiff_t src2_pitch, int weight_i)
 {
   // weight_i is 16 bit scaled
   assert(weight_i != 0 && weight_i != 65536);
@@ -50,8 +50,8 @@ static void blend_uint8_c(uint8_t* dstp, const uint8_t* srcp1,
 }
 
 static void blend_uint16_c(uint8_t* dstp, const uint8_t* srcp1,
-  const uint8_t* srcp2, int width, int height, int dst_pitch,
-  int src1_pitch, int src2_pitch, int weight_i, int bits_per_pixel)
+  const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch,
+  ptrdiff_t src1_pitch, ptrdiff_t src2_pitch, int weight_i, int bits_per_pixel)
 {
   // weight_i is 15 bit scaled
   // min and max cases handled earlier
@@ -80,7 +80,7 @@ static void blend_uint16_c(uint8_t* dstp, const uint8_t* srcp1,
 // handles 50% special case as well
 // hbd ready
 void dispatch_blend(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height,
-  int dst_pitch, int src1_pitch, int src2_pitch, int weight_i, int bits_per_pixel)
+  ptrdiff_t dst_pitch, ptrdiff_t src1_pitch, ptrdiff_t src2_pitch, int weight_i, int bits_per_pixel)
 {
 
   // weight_i 0 and max --> copy is already handled!
@@ -114,7 +114,7 @@ void dispatch_blend(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, i
 // only 411 uses
 template<int blkSizeY>
 void calcSAD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
-  int pitch1, int pitch2, int& sad)
+  ptrdiff_t pitch1, ptrdiff_t pitch2, int& sad)
 {
   int tmpsum = 0;
   for (int i = 0; i < blkSizeY; i++) {
@@ -129,7 +129,7 @@ void calcSAD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
 
 template<int blkSizeY>
 void calcSSD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
-  int pitch1, int pitch2, int& sad)
+  ptrdiff_t pitch1, ptrdiff_t pitch2, int& sad)
 {
   int tmpsum = 0;
   for (int i = 0; i < blkSizeY; i++) {
@@ -181,11 +181,10 @@ void calcSSD_C_2xN(const uint8_t* ptr1, const uint8_t* ptr2,
 // true: SAD, false: SSD
 template<typename pixel_t, bool SAD, int inc>
 void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
-  int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff,
-  bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt,
+  ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff,
+  [[maybe_unused]] bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt,
   const VSVideoInfo *vi)
 {
-    (void)chroma;
 
   int temp1, temp2, u;
 
@@ -314,17 +313,17 @@ void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
 
 // instantiate
 template void calcDiff_SADorSSD_Generic_c<uint8_t, false, 1>(const uint8_t* prvp, const uint8_t* curp,
-  int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
+  ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 template void calcDiff_SADorSSD_Generic_c<uint8_t, false, 2>(const uint8_t* prvp, const uint8_t* curp,
-  int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
+  ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 template void calcDiff_SADorSSD_Generic_c<uint8_t, true, 1>(const uint8_t* prvp, const uint8_t* curp,
-  int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
+  ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 template void calcDiff_SADorSSD_Generic_c<uint8_t, true, 2>(const uint8_t* prvp, const uint8_t* curp,
-  int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
+  ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 
 template void calcDiff_SADorSSD_Generic_c<uint16_t, false, 1>(const uint16_t* prvp, const uint16_t* curp,
-  int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
+  ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 template void calcDiff_SADorSSD_Generic_c<uint16_t, true, 1>(const uint16_t* prvp, const uint16_t* curp,
-  int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
+  ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 
 

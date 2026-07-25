@@ -456,7 +456,10 @@ int TFM::D2V_write_array(const std::vector<int> &array, char wfile[]) const
           val &= ~0x03;
           val |= array[num++];
         }
-        sprintf(tbuf, "%x", val);
+        // Exactly two characters are written back, so the value has to be zero padded: "%x" of
+        // anything below 0x10 yields one digit, and tbuf[1] would then be the terminator, cutting
+        // the rest of the line off in the "fixed" d2v that gets written out.
+        sprintf(tbuf, "%02x", val);
         *p = tbuf[0]; ++p;
         *p = tbuf[1];
       }

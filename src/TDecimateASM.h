@@ -43,26 +43,26 @@
 
 template<typename pixel_t, bool SAD, int inc>
 void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
-  int prv_pitch, int cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
+  ptrdiff_t prv_pitch, ptrdiff_t cur_pitch, int width, int height, int plane, int xblocks4, uint64_t* diff, bool chroma, int xshiftS, int yshiftS, int xhalfS, int yhalfS, int nt, const VSVideoInfo *vi);
 
 void CalcMetricsExtracted(const VSFrame *prevt, const VSFrame *currt, CalcMetricData& d, VSCore *core, const VSAPI *vsapi);
 
 template<typename pixel_t>
-void HorizontalBlur_Planar_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-  int dst_pitch, int width, int height, bool allow_leftminus1);
+void HorizontalBlur_Planar_c(const uint8_t* srcp, uint8_t* dstp, ptrdiff_t src_pitch,
+  ptrdiff_t dst_pitch, int width, int height, bool allow_leftminus1);
 
 void HorizontalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
   const VSAPI *vsapi);
 
 template<typename pixel_t>
-void VerticalBlur_c(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
-  int dst_pitch, int width, int height);
+void VerticalBlur_c(const uint8_t* srcp, uint8_t* dstp, ptrdiff_t src_pitch,
+  ptrdiff_t dst_pitch, int width, int height);
 
 void VerticalBlur(const VSFrame *src, VSFrame *dst, bool bchroma, const VSAPI *vsapi);
 
 
 // handles 50% special case as well
 void dispatch_blend(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height,
-  int dst_pitch, int src1_pitch, int src2_pitch, int weight_i, int bits_per_pixel);
+  ptrdiff_t dst_pitch, ptrdiff_t src1_pitch, ptrdiff_t src2_pitch, int weight_i, int bits_per_pixel);
 
 #endif // __TDECIMATEASM_H__

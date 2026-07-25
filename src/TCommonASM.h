@@ -37,11 +37,11 @@ AVS_FORCEINLINE int cubicInt(int p1, int p2, int p3, int p4)
 
 
 template<typename pixel_t>
-void check_combing_c(const pixel_t* srcp, uint8_t* dstp, int width, int height, int src_pitch, int dst_pitch, int cthresh);
+void check_combing_c(const pixel_t* srcp, uint8_t* dstp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t dst_pitch, int cthresh);
 
 
 template<typename pixel_t, typename safeint_t>
-void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* dstp, int width, int height, int src_pitch, int dst_pitch, safeint_t cthreshsq);
+void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* dstp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t dst_pitch, safeint_t cthreshsq);
 
 
 
@@ -50,25 +50,25 @@ void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* dstp, int width, int 
 
 template<typename pixel_t>
 void buildABSDiffMask_c(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height);
+  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height);
 
 template<typename pixel_t>
 void do_buildABSDiffMask(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* tbuffer,
-  int prv_pitch, int nxt_pitch, int tpitch, int width, int height);
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height);
 
 template<typename pixel_t, int bits_per_pixel>
-void AnalyzeDiffMask_Planar(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer, int tpitch, int Width, int Height);
+void AnalyzeDiffMask_Planar(uint8_t* dstp, ptrdiff_t dst_pitch, uint8_t* tbuffer, ptrdiff_t tpitch, int Width, int Height);
 
 
 
 
 template<typename pixel_t>
 void buildABSDiffMask2_c(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel);
+  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height, int bits_per_pixel);
 
 template<typename pixel_t>
 void do_buildABSDiffMask2(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dstp,
-  int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel);
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height, int bits_per_pixel);
 
 
 
@@ -77,7 +77,7 @@ void do_buildABSDiffMask2(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dst
 void copyFrame(VSFrame *dst, const VSFrame *src, const VSAPI *vsapi);
 
 template<typename pixel_t>
-void blend_5050_c(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, int dst_pitch, int src1_pitch, int src2_pitch);
+void blend_5050_c(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch, ptrdiff_t src1_pitch, ptrdiff_t src2_pitch);
 
 template<int planarType>
 void do_FillCombedPlanarUpdateCmaskByUV(uint8_t* cmkp, uint8_t* cmkpU, uint8_t* cmkpV, int Width, int Height, ptrdiff_t cmk_pitch, ptrdiff_t cmk_pitchUV);

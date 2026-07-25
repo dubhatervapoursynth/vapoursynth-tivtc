@@ -27,7 +27,7 @@
 
 template<typename pixel_t>
 void buildABSDiffMask_c(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height)
+  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height)
 {
   if (width <= 0)
     return;
@@ -48,28 +48,28 @@ void buildABSDiffMask_c(const uint8_t* prvp, const uint8_t* nxtp,
 
 template<typename pixel_t>
 void do_buildABSDiffMask(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* tbuffer,
-  int prv_pitch, int nxt_pitch, int tpitch, int width, int height)
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height)
 {
   buildABSDiffMask_c<pixel_t>(prvp, nxtp, tbuffer, prv_pitch, nxt_pitch, tpitch, width, height);
 }
 // instantiate
 template void do_buildABSDiffMask<uint8_t>(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* tbuffer,
-  int prv_pitch, int nxt_pitch, int tpitch, int width, int height);
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height);
 template void do_buildABSDiffMask<uint16_t>(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* tbuffer,
-  int prv_pitch, int nxt_pitch, int tpitch, int width, int height);
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t tpitch, int width, int height);
 
 
 template<typename pixel_t>
 void do_buildABSDiffMask2(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dstp,
-  int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel)
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height, int bits_per_pixel)
 {
   buildABSDiffMask2_c<pixel_t>(prvp, nxtp, dstp, prv_pitch, nxt_pitch, dst_pitch, width, height, bits_per_pixel);
 }
 // instantiate
 template void do_buildABSDiffMask2<uint8_t>(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dstp,
-  int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel);
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height, int bits_per_pixel);
 template void do_buildABSDiffMask2<uint16_t>(const uint8_t* prvp, const uint8_t* nxtp, uint8_t* dstp,
-  int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel);
+  ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height, int bits_per_pixel);
 
 // Finally this is common for TFM and TDeint, planar (luma, luma+chroma))
 // This C code replaces some thousand line of copy pasted original inline asm lines
@@ -189,7 +189,7 @@ static AVS_FORCEINLINE void AnalyzeOnePixel(uint8_t* dstp,
 
 // Common TDeint and TFM version
 template<typename pixel_t, int bits_per_pixel>
-void AnalyzeDiffMask_Planar(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer8, int tpitch, int Width, int Height)
+void AnalyzeDiffMask_Planar(uint8_t* dstp, ptrdiff_t dst_pitch, uint8_t* tbuffer8, ptrdiff_t tpitch, int Width, int Height)
 {
   tpitch /= sizeof(pixel_t);
   const pixel_t* tbuffer = reinterpret_cast<const pixel_t*>(tbuffer8);
@@ -220,16 +220,16 @@ void AnalyzeDiffMask_Planar(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer8, int
   }
 }
 // instantiate
-template void AnalyzeDiffMask_Planar<uint8_t,8>(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer8, int tpitch, int Width, int Height);
-template void AnalyzeDiffMask_Planar<uint16_t, 10>(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer8, int tpitch, int Width, int Height);
-template void AnalyzeDiffMask_Planar<uint16_t, 12>(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer8, int tpitch, int Width, int Height);
-template void AnalyzeDiffMask_Planar<uint16_t, 14>(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer8, int tpitch, int Width, int Height);
-template void AnalyzeDiffMask_Planar<uint16_t, 16>(uint8_t* dstp, int dst_pitch, uint8_t* tbuffer8, int tpitch, int Width, int Height);
+template void AnalyzeDiffMask_Planar<uint8_t,8>(uint8_t* dstp, ptrdiff_t dst_pitch, uint8_t* tbuffer8, ptrdiff_t tpitch, int Width, int Height);
+template void AnalyzeDiffMask_Planar<uint16_t, 10>(uint8_t* dstp, ptrdiff_t dst_pitch, uint8_t* tbuffer8, ptrdiff_t tpitch, int Width, int Height);
+template void AnalyzeDiffMask_Planar<uint16_t, 12>(uint8_t* dstp, ptrdiff_t dst_pitch, uint8_t* tbuffer8, ptrdiff_t tpitch, int Width, int Height);
+template void AnalyzeDiffMask_Planar<uint16_t, 14>(uint8_t* dstp, ptrdiff_t dst_pitch, uint8_t* tbuffer8, ptrdiff_t tpitch, int Width, int Height);
+template void AnalyzeDiffMask_Planar<uint16_t, 16>(uint8_t* dstp, ptrdiff_t dst_pitch, uint8_t* tbuffer8, ptrdiff_t tpitch, int Width, int Height);
 
 // HBD ready
 template<typename pixel_t>
 void buildABSDiffMask2_c(const uint8_t* prvp, const uint8_t* nxtp,
-  uint8_t* dstp, int prv_pitch, int nxt_pitch, int dst_pitch, int width, int height, int bits_per_pixel)
+  uint8_t* dstp, ptrdiff_t prv_pitch, ptrdiff_t nxt_pitch, ptrdiff_t dst_pitch, int width, int height, int bits_per_pixel)
 {
   if (width <= 0)
     return;
@@ -257,7 +257,7 @@ void buildABSDiffMask2_c(const uint8_t* prvp, const uint8_t* nxtp,
 
 
 template<typename pixel_t>
-void check_combing_c(const pixel_t* srcp, uint8_t* cmkp, int width, int height, int src_pitch, int cmk_pitch, int cthresh)
+void check_combing_c(const pixel_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh)
 {
   // cthresh is scaled to actual bit depth
   const pixel_t* srcppp = srcp - src_pitch * 2;
@@ -290,11 +290,11 @@ void check_combing_c(const pixel_t* srcp, uint8_t* cmkp, int width, int height, 
   }
 }
 // instantiate
-template void check_combing_c<uint8_t>(const uint8_t* srcp, uint8_t* cmkp, int width, int height, int src_pitch, int cmk_pitch, int cthresh);
-template void check_combing_c<uint16_t>(const uint16_t* srcp, uint8_t* cmkp, int width, int height, int src_pitch, int cmk_pitch, int cthresh);
+template void check_combing_c<uint8_t>(const uint8_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh);
+template void check_combing_c<uint16_t>(const uint16_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthresh);
 
 template<typename pixel_t, typename safeint_t>
-void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* cmkp, int width, int height, int src_pitch, int cmk_pitch, safeint_t cthreshsq)
+void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, safeint_t cthreshsq)
 {
   // cthresh is scaled to actual bit depth
   const pixel_t* srcpp = srcp - src_pitch;
@@ -314,8 +314,8 @@ void check_combing_c_Metric1(const pixel_t* srcp, uint8_t* cmkp, int width, int 
   }
 }
 // instantiate
-template void check_combing_c_Metric1<uint8_t, int>(const uint8_t* srcp, uint8_t* cmkp, int width, int height, int src_pitch, int cmk_pitch, int cthreshsq);
-template void check_combing_c_Metric1<uint16_t, int64_t>(const uint16_t* srcp, uint8_t* cmkp, int width, int height, int src_pitch, int cmk_pitch, int64_t cthreshsq);
+template void check_combing_c_Metric1<uint8_t, int>(const uint8_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int cthreshsq);
+template void check_combing_c_Metric1<uint16_t, int64_t>(const uint16_t* srcp, uint8_t* cmkp, int width, int height, ptrdiff_t src_pitch, ptrdiff_t cmk_pitch, int64_t cthreshsq);
 
 
 
@@ -348,7 +348,7 @@ void copyFrame(VSFrame *dst, const VSFrame *src, const VSAPI *vsapi)
 // instantiate
 
 template<typename pixel_t>
-void blend_5050_c(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, int dst_pitch, int src1_pitch, int src2_pitch)
+void blend_5050_c(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch, ptrdiff_t src1_pitch, ptrdiff_t src2_pitch)
 {
   for (int y = 0; y < height; ++y)
   {
@@ -361,8 +361,8 @@ void blend_5050_c(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int
 }
 
 // instantiate
-template void blend_5050_c<uint8_t>(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, int dst_pitch, int src1_pitch, int src2_pitch);
-template void blend_5050_c<uint16_t>(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, int dst_pitch, int src1_pitch, int src2_pitch);
+template void blend_5050_c<uint8_t>(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch, ptrdiff_t src1_pitch, ptrdiff_t src2_pitch);
+template void blend_5050_c<uint16_t>(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, ptrdiff_t dst_pitch, ptrdiff_t src1_pitch, ptrdiff_t src2_pitch);
 
 // like HandleChromaCombing in TDeinterlace
 // used by isCombedTIVTC as well

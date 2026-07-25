@@ -34,17 +34,17 @@
 
 template<typename pixel_t>
 void maskClip2_C(const uint8_t* srcp, const uint8_t* dntp,
-  const uint8_t* maskp, uint8_t* dstp, int src_pitch, int dnt_pitch,
-  int msk_pitch, int dst_pitch, int width, int height);
+  const uint8_t* maskp, uint8_t* dstp, ptrdiff_t src_pitch, ptrdiff_t dnt_pitch,
+  ptrdiff_t msk_pitch, ptrdiff_t dst_pitch, int width, int height);
 
 template<typename pixel_t, bool with_mask>
 void blendDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
-  const uint8_t* maskp, int src_pitch, int dst_pitch, int msk_pitch,
+  const uint8_t* maskp, ptrdiff_t src_pitch, ptrdiff_t dst_pitch, ptrdiff_t msk_pitch,
   int width, int height);
 
 template<typename pixel_t, int bits_per_pixel, bool with_mask>
 void cubicDeintMask_C(const pixel_t* srcp, pixel_t* dstp,
-  const uint8_t* maskp, int src_pitch, int dst_pitch, int msk_pitch,
+  const uint8_t* maskp, ptrdiff_t src_pitch, ptrdiff_t dst_pitch, ptrdiff_t msk_pitch,
   int width, int height);
 
 class TFMPP
