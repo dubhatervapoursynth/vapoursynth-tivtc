@@ -25,10 +25,17 @@ its own.
 
 ## Installation
 
-Drop the built library into a directory VapourSynth autoloads, or load it explicitly:
+Install the wheel, which drops the plugin straight into VapourSynth's autoload directory
+(`<site-packages>/vapoursynth/plugins`):
+
+```sh
+pip install vapoursynth-tivtc
+```
+
+Otherwise drop the built library into a directory VapourSynth autoloads, or load it explicitly:
 
 ```py
-core.std.LoadPlugin("/path/to/libtivtc.so")   # or tivtc.dll
+core.std.LoadPlugin("/path/to/tivtc.so")   # or tivtc.dll
 ```
 
 ## Quick start
@@ -278,10 +285,20 @@ import vapoursynth as vs; print(vs.get_include())
 ```
 
 so the only requirement is that the `vapoursynth` module is importable by the Python meson picks
-up — no pkg-config and no separate SDK install. If you have several Python installations, point
-meson at the right one with `meson setup build -Dpython.name=/path/to/python`.
+up — no pkg-config and no separate SDK install. The same interpreter also decides where the
+plugin installs (`<site-packages>/vapoursynth/plugins`). If you have several Python
+installations, point meson at the right one with a native file:
 
-The result is `libtivtc.so` on Linux and macOS, `tivtc.dll` on Windows.
+```ini
+[binaries]
+python = '/path/to/python'
+```
+
+```sh
+meson setup build --native-file python.ini
+```
+
+The result is `tivtc.so` on Linux and macOS, `tivtc.dll` on Windows.
 
 ## References
 

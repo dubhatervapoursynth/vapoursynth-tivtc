@@ -69,10 +69,27 @@ jobs:
           mingw-w64-clang-x86_64-toolchain
           mingw-w64-clang-x86_64-uv
           mingw-w64-clang-x86_64-git
-          
+          unzip
+
     - name: Build
       run: |
-        uv build
+        uv build -Csetup-args="-Dcpp_link_args=-static"
+
+    # The wheel has to stand on its own on a machine with no msys2 install, so fail loudly
+    # if anything from the toolchain prefix is still linked dynamically (libc++, libunwind,
+    # libwinpthread, ...) instead of being pulled in by -static.
+    - name: Check for toolchain DLL dependencies
+      run: |
+        mkdir -p wheelcheck
+        unzip -o dist/*.whl -d wheelcheck > /dev/null
+        dll=$(find wheelcheck -name 'tivtc.dll')
+        llvm-objdump -p "$dll" | grep -i 'DLL Name:' | sort -u || true
+        # No Windows system DLL is named lib*, so an import that is means libc++,
+        # libunwind or libwinpthread leaked in.
+        if llvm-objdump -p "$dll" | grep -iE 'DLL Name:[[:space:]]*lib'; then
+          echo "::error::tivtc.dll still depends on the toolchain DLLs listed above"
+          exit 1
+        fi
 
     - name: Fix tag
       run: |
